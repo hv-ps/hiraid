@@ -5,17 +5,14 @@ It is capable of communicating through either raidcom or cmrest and can be exten
 
 Each command / cmrest output is stored in a logical structure beneath storageobject.views, this view can be saved as a cache file and reloaded onto the raid object in a subsequent script.
 
-Each api ( raidcom / cmrest ) has a parser in order to serialise the data into dictionaries which are then passed to a views class to produce the default stored view. Customviews can be used to arrange data how you need it or even override default views.
+For each api capability ( raidcom / cmrest ) a parser exists in order to serialise the data into dictionaries which are then passed to a views class to produce the default stored view. Customviews can be used to arrange data how you need it or even override the default views.
 
 The raidcom piece is well underway and has already been expanded several times as needs have risen.
 
-CMrest is quite barebones but is ready to be expanded.
+CMrest is fairly barebones but ready to be expanded; the mechanism for instantiating raid objects which communicate through cmrest is in place and is demonstrated under the scripts directory.
 
 ## Long term goal
-
-Normalising the data in order to get standard views of the storage no matter which api is used would allow for the highest degree of flexibility and is the long term aspiration for this utility.
-
-
+Normalising the data in order to achieve standard views of the storage no matter which api is used would allow for the highest degree of flexibility and is the current long term aspiration for this utility.
 
 ### Install
 > pip3 install git+https://github.com/hv-ps/hiraid.git
