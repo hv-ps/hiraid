@@ -16,7 +16,9 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[ ],
 
-
-    #entry_points = { 'console_scripts':['pwdstore = pwdstore:main'] }
-    scripts = ['scripts/raid-get-ports.py']
+    scripts = [
+	'scripts/raid-get-ports.py',
+	'scripts/raid-get-ports-cmrest.py',
+	'scripts/raid-get-ports-cmrest-hidepwd.py',
+	]
 )
