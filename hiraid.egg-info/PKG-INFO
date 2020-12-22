@@ -1,0 +1,117 @@
+Metadata-Version: 2.1
+Name: hiraid
+Version: 1.0.2
+Summary: Hitachi storage communication toolkit
+Home-page: https://github.com/hv-ps/hiraid
+Author: Darren Chambers
+Author-email: darren.chambers@hitachivantara.com
+License: UNKNOWN
+Description: # Pwdstore 1.0.00
+        Pwdstore is a simple Python script for encrypting and storing passwords to avoid having plain text passwords in files and shell history.
+        
+        ### Install
+        > pip3 install git+https://github.com/hv-ps/Pwdstore.git
+        
+        In order for this to work you will need to create a personal access token and authorise the personal access token for use with SAML single sign-on: 
+        
+        https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/creating-a-personal-access-token 
+        https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on
+        
+        ### Synopsis
+        This utility should be run through sudo or directly as root.
+        
+        The following directory and files are created the first time that the script is executed:
+        
+        > 0400 /root/.keyfile
+        > 0644 /root/.encryptedconnections.db
+        
+        cryptography.fernet is used to generate the .keyfile and take care of encryption.
+        sqlite is used to store encrypted connection information.
+        
+        Of course if you have the .keyfile and .encryptedconnections.db it will be really easy to decrypt and display the passwords.
+        Be sure that the pwdstore.py script is not writable by anyone except root otherwise it would be trivial for a user to modify the script to have it write out the passwords somewhere the next time it is executed.
+        
+        For example:
+        > 550 pwdstore.py
+        
+        ## Help
+        ### pwdstore.py -h
+        ```
+        usage: pwdstore.py [-h] {add,del,show,remove} ...
+        
+        Fast password obfuscation - pwdstore 01.00.00
+        
+        positional arguments:
+          {add,del,show,remove}
+                                Subcommands
+            add                 Add a new connection
+            del                 Delete an unwanted connection
+            show                Show available connections
+            remove              Remove password store and keyfile
+        
+        optional arguments:
+          -h, --help            show this help message and exit
+        ```
+        ### pwdstore.py add -h
+        ```
+        usage: pwdstore.py add [-h] [-k KEYFILE] [-b DATABASE] -n NAME -c CATEGORY -i ADDRESS -r PORT -t PROTOCOL -u USERID [-p PASSWORD]
+        
+        optional arguments:
+          -h, --help            show this help message and exit
+          -k KEYFILE, --keyfile KEYFILE
+                                Optional: Alternate name for the keyfile, default is ./.keyfile
+          -b DATABASE, --database DATABASE
+                                Optional: Alternate name for the database, default is ./.encryptedconnections.db
+          -n NAME, --name NAME  Connection name e.g automator.hitachivantara.com
+          -c CATEGORY, --category CATEGORY
+                                Category e.g. rest
+          -i ADDRESS, --address ADDRESS
+                                Address e.g automator.hitachivantara.com OR 172.16.1.10
+          -r PORT, --port PORT  Port e.g 80
+          -t PROTOCOL, --protocol PROTOCOL
+                                Port e.g 80
+          -u USERID, --userid USERID
+                                User ID
+          -p PASSWORD, --password PASSWORD
+                                Better to omit password and enter at prompt
+        ```                        
+        ### pwdstore.py del -h
+        ```
+        usage: pwdstore.py del [-h] [-k KEYFILE] [-b DATABASE] -n NAME -c CATEGORY
+        
+        optional arguments:
+          -h, --help            show this help message and exit
+          -k KEYFILE, --keyfile KEYFILE
+                                Optional: Alternate name for the keyfile, default is ./.keyfile
+          -b DATABASE, --database DATABASE
+                                Optional: Alternate name for the database, default is ./.encryptedconnections.db
+          -n NAME, --name NAME  Connection name e.g automator.hitachivantara.com
+          -c CATEGORY, --category CATEGORY
+                                Category e.g. rest
+        ```
+        ### pwdstore.py show -h
+        ```
+        usage: pwdstore.py show [-h] [-k KEYFILE] [-b DATABASE]
+        
+        optional arguments:
+          -h, --help            show this help message and exit
+          -k KEYFILE, --keyfile KEYFILE
+                                Optional: Alternate name for the keyfile, default is ./.keyfile
+          -b DATABASE, --database DATABASE
+                                Optional: Alternate name for the database, default is ./.encryptedconnections.db
+        ```                        
+        ### pwdstore.py remove -h
+        ```
+        usage: pwdstore.py remove [-h] [-k KEYFILE] [-b DATABASE]
+        
+        optional arguments:
+          -h, --help            show this help message and exit
+          -k KEYFILE, --keyfile KEYFILE
+                                Optional: Alternate name for the keyfile, default is ./.keyfile
+          -b DATABASE, --database DATABASE
+                                Optional: Alternate name for the database, default is ./.encryptedconnections.db
+        ```
+        
+        
+Platform: UNKNOWN
+Description-Content-Type: text/markdown

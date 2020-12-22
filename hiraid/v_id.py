@@ -1,0 +1,57 @@
+#!/usr/bin/python
+# -----------------------------------------------------------------------------------------------------------------------------------
+# Version v1.1.00
+# -----------------------------------------------------------------------------------------------------------------------------------
+#
+# License Terms
+# -------------
+# Unless stated otherwise, Hitachi Vantara Limited and/or its group companies is/are the owner or the licensee
+# of all intellectual property rights in this script. This work is protected by copyright laws and treaties around
+# the world. This script is solely for use by Hitachi Vantara Limited and/or its group companies in the provision
+# of services to you by Hitachi Vantara Limited and/or its group companies and, as a condition of your receiving
+# such services, you expressly agree not to use, reproduce, duplicate, copy, sell, resell or exploit for any purposes,
+# commercial or otherwise, this script or any portion of this script. All of Hitachi Vantara Limited and/or its
+# group companies rights are reserved.
+#
+# -----------------------------------------------------------------------------------------------------------------------------------
+# Changes:
+#
+# 14/01/2020    v1.1.00     Initial Release
+#
+# -----------------------------------------------------------------------------------------------------------------------------------
+
+class VId:
+
+    models = {
+                "R7"        :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
+                # "-"         :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
+                "R8"        :{ "v_id":"R8",     "type":"R800",      "model":["VSP G1000"] },
+                "M8M"       :{ "v_id":"M800M",  "type":"M800M",     "model":["VSP G400","VSP G600"] },
+                "M8S"       :{ "v_id":"M8M",    "type":"M800S",     "model":["VSP G200"] },
+                "M8H"       :{ "v_id":"M8H",    "type":"M800H",     "model":["VSP G800"] },
+                "M850S1"    :{ "v_id":"M850S1", "type":"M850S1",    "model":["VSP G350"] },
+                "M850S2"    :{ "v_id":"M850S2", "type":"M850S2",    "model":["VSP G370"] },
+                "M850M3"    :{ "v_id":"M850M3", "type":"M850M3",    "model":["VSP G700"] },
+                "M850M3F"   :{ "v_id":"M850M3F","type":"M850M3F",   "model":["VSP F700"] },
+                "M850HF"    :{ "v_id":"M850HF", "type":"M850HF",    "model":["VSP F900"] },
+                "M850S1F"   :{ "v_id":"M850S1F","type":"M850S1F",   "model":["VSP F350"] },
+                "M850S2F"   :{ "v_id":"M850S2F","type":"M850S2F",   "model":["VSP F370"] },
+                "M850H"     :{ "v_id":"M850H",  "type":"M850H",     "model":["VSP G900"] },
+                "R9F"       :{ "v_id":"R9F",    "type":"R900F",     "model":["VSP G5100","VSP G5500"] },
+                "VSP"       :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
+                "VSP G1000" :{ "v_id":"R8",     "type":"R800",      "model":["VSP G1000"] },
+                "VSP G200"  :{ "v_id":"M8M",    "type":"M800S",     "model":["VSP G200"] },
+                "VSP G400"  :{ "v_id":"M800M",  "type":"M800M",     "model":["VSP G400"] },
+                "VSP G600"  :{ "v_id":"M800M",  "type":"M800M",     "model":["VSP G600"] },
+                "VSP G800"  :{ "v_id":"M8H",    "type":"M800H",     "model":["VSP G800"] },
+                "VSP G350"  :{ "v_id":"M850S1", "type":"M850S1",    "model":["VSP G350"] },
+                "VSP G370"  :{ "v_id":"M850S2", "type":"M850S2",    "model":["VSP G370"] },
+                "VSP G700"  :{ "v_id":"M850M3", "type":"M850M3",    "model":["VSP G700"] },
+                "VSP G900"  :{ "v_id":"M850H",  "type":"M850H",     "model":["VSP G900"] },
+                "VSP G5100" :{ "v_id":"R9F",    "type":"R900F",     "model":["VSP G5100"] },
+                "VSP G5500" :{ "v_id":"R9F",    "type":"R900F",     "model":["VSP G5500"] }
+            }
+    micro_ver = {
+                "70"        :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
+                "73"        :{ "v_id":"M700",   "type":"M700",      "model":["HUS VM"] }
+            }
