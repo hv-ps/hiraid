@@ -23,9 +23,9 @@ https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/
 https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on
 
 ### Quick start
-> from hiraid import raidlib
-> import logging
-> target_serial = 53511
-> targetstorage = raidlib.Storage(target_serial,log)
-> targetstorage.raidcom(horcminst)
-> targetports = targetstorage.getport()
+> from hiraid import raidlib 
+> import logging 
+> target_serial = 53511 
+> targetstorage = raidlib.Storage(target_serial,log) 
+> targetstorage.raidcom(horcminst) 
+> targetports = targetstorage.getport() 
