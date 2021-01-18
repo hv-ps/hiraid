@@ -9,7 +9,7 @@ For each api capability ( raidcom / cmrest ) a parser exists in order to seriali
 
 The raidcom piece is well underway and has already been expanded several times as needs have risen.
 
-CMrest is fairly barebones but ready to be expanded; the mechanism for instantiating raid objects which communicate through cmrest is in place and is demonstrated under the scripts directory.
+CMrest is fairly barebones but ready to be expanded; the mechanism for instantiating raid objects which communicate through cmrest is in place and is demonstrated under the scripts directory ( /usr/bin/local/raid* after installation ).
 
 ## Long term goal
 Normalising the data in order to achieve standard views of the storage no matter which api is used would allow for the highest degree of flexibility and is the current long term aspiration for this utility.
@@ -22,4 +22,10 @@ In order for this to work you will need to create a personal access token and au
 https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/creating-a-personal-access-token 
 https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on
 
-
+### Quick start
+> from hiraid import raidlib  
+> import logging  
+> target_serial = 53511  
+> targetstorage = raidlib.Storage(target_serial,log)  
+> targetstorage.raidcom(horcminst)  
+> targetports = targetstorage.getport()  
