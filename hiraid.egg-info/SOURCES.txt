@@ -28,4 +28,6 @@ hiraid.egg-info/PKG-INFO
 hiraid.egg-info/SOURCES.txt
 hiraid.egg-info/dependency_links.txt
 hiraid.egg-info/top_level.txt
+scripts/raid-get-ports-cmrest-hidepwd.py
+scripts/raid-get-ports-cmrest.py
 scripts/raid-get-ports.py
