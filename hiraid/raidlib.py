@@ -1,6 +1,6 @@
 #!/usr/bin/python3.6
 # -----------------------------------------------------------------------------------------------------------------------------------
-# Version v1.1.02
+# Version v1.1.03
 # -----------------------------------------------------------------------------------------------------------------------------------
 #
 # License Terms
@@ -22,7 +22,8 @@
 #
 # 03/11/2020    v1.1.02     Add functions getsnapshotgroup_default, getsnapshotgroup, addsnapshotgroup, createsnapshot,
 #                           unmapsnapshotsvol, resyncsnapshotmu, snapshotevtwait, deletesnapshotmu - CM
-
+#
+# 16/01/2021    v1.1.03     Updated identity to return nicely if id not available in v_id.py
 #
 # -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -165,15 +166,16 @@ class Storage:
         ''' Identify storage array '''
         apiresponse = self.apis[self.useapi].identify()
         if apiresponse['views']['defaultview']['0']['V_ID'] == "-":
-            self.log.info("Ambiguous identifier ({}), probably from older R700 'get resource'. Falling back to identification by micro_ver".format(apiresponse['views']['defaultview']['0']['V_ID']))
+            self.log.info("Ambiguous identifier in get resource ({}), probably a 700 class storage system ( vsp, husvm ). Falling back to identification by micro_ver".format(apiresponse['views']['defaultview']['0']['V_ID']))
             identifier = self.storagetypelookup.micro_ver[self.micro_ver.split('-')[0]]['v_id']
         else:
             identifier = apiresponse['views']['defaultview']['0']['V_ID']
-            
-        self.v_id = self.storagetypelookup.models[identifier]['v_id']
-        self.vtype = self.storagetypelookup.models[identifier]['type']
-        self.model = " - ".join(self.storagetypelookup.models[identifier]['model'])
-        
+
+        identitytable = self.storagetypelookup.models.get(identifier,{})
+        self.v_id = identitytable.get('v_id',None)
+        self.vtype = identitytable.get('type',None)
+        self.model = " - ".join(identitytable.get('model',[]))
+
         if not self.vtype:
             raise Exception("Unable to identify self, check v_id.py for models supported by this function")
         self.log.info('Identity > {}, Model > {}, v_id > {}'.format(self.vtype,self.model,self.v_id))
