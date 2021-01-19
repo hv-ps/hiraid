@@ -10,6 +10,8 @@ hiraid/customhostviews.py
 hiraid/customviews.py
 hiraid/gadedgemigration.py
 hiraid/gadmigration.py
+hiraid/hostlib.py
+hiraid/hostviews.py
 hiraid/hvexception.py
 hiraid/hvutil.py
 hiraid/messaging.py
@@ -18,7 +20,9 @@ hiraid/raidcom.py
 hiraid/raidcomparser.py
 hiraid/raidlib.py
 hiraid/raidlibStart.py
+hiraid/redhatmultipathdparser.py
 hiraid/scriptconf.py
+hiraid/sshhost.py
 hiraid/storagecapabilities.py
 hiraid/storageexception.py
 hiraid/storagemigration.py

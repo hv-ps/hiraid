@@ -1,6 +1,6 @@
 #!/usr/bin/python3.6
 # -----------------------------------------------------------------------------------------------------------------------------------
-# Version v1.1.00
+# Version v1.1.01
 # -----------------------------------------------------------------------------------------------------------------------------------
 #
 # License Terms
@@ -17,6 +17,8 @@
 # Changes:
 #
 # 14/01/2020    v1.1.00     Initial Release
+#
+# 19/01/2021    v1.1.01     Bug fix, reference to log object typo
 #
 # -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -105,7 +107,7 @@ class GadMigration(StorageMigration):
                         ldev['omit'] = False
 
                     if 'CMD' in ldev['VOL_ATTR']:
-                        log.warn('Ldevid \'{}\' is CMD, omit ldev from migration'.format(ldevid))
+                        self.log.warn('Ldevid \'{}\' is CMD, omit ldev from migration'.format(ldevid))
                         ldev['omit'] = True
 
                 if storage.views['_resourcegroups'][resourcegroupid]['RS_GROUP'] == "meta_resource" or vsm_name_policy == 'newname':
@@ -221,7 +223,7 @@ class GadMigration(StorageMigration):
                             #    ldev['omit'] = False
 
                             if 'CMD' in ldev['VOL_ATTR']:
-                                log.warn('Ldevid \'{}\' is CMD, omit ldev from migration'.format(ldevid))
+                                self.log.warn('Ldevid \'{}\' is CMD, omit ldev from migration'.format(ldevid))
                                 ldev['omit'] = True
 
                         if self.edgestoragearrays[edgestorageserial]['storage'].views['_resourcegroups'][resourcegroupid]['RS_GROUP'] == "meta_resource" or vsm_name_policy == 'newname':
