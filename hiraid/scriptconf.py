@@ -50,6 +50,7 @@ class Scriptconf:
     logbasedir = basedir
     logdir = ('/var/log/hiraid','C:\\log\\hiraid')[os.name == 'nt']
     smilies = True
+    targeted_rollback = True
 
     
 

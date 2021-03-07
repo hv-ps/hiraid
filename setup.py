@@ -6,7 +6,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='hiraid',
-    version='1.0.04',
+    version='1.0.05',
     description='Hitachi storage communication toolkit',
     long_description=long_description,
     long_description_content_type='text/markdown',

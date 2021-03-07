@@ -18,6 +18,10 @@
 #
 # 14/01/2020    v1.1.00     Initial Release
 #
+# 08/03/2021    v1.1.01     Modified to allow targeted_rollback.
+#                           Reverse directory contains rollback scripts for each migrating object.
+#                           To enable set scriptconf.py Scriptconf.targeted_rollback = True
+#
 # -----------------------------------------------------------------------------------------------------------------------------------
 
 import json.encoder
@@ -51,7 +55,7 @@ class textstyle:
 
 class StorageMigration:
 
-    def __init__(self, migrationtype: str, log: object, start: str=None, group: str=None, source: object=None, target: object=None, config: object=None, cache: bool=False, env: object=None, host: str=None, step: str=None, horcmdir: str="/etc/"):
+    def __init__(self, migrationtype: str, log: object, start: str=None, group: str=None, source: object=None, target: object=None, config: object=None, cache: bool=False, env: object=None, host: str=None, step: str=None, horcmdir: str="/etc/", targeted_rollback: bool=False):
         
         self.migrationtype = migrationtype
         self.source = source
@@ -86,6 +90,9 @@ class StorageMigration:
         self.edgestorage = False
         self.edgestoragearrays = {}
         self.storagearrays = {}
+        self.targeted_rollback = targeted_rollback
+        self.undocmds = {}
+        self.undodir = '{}{}{}'.format(self.basedir,os.sep,'reverse')
 
 
     def initmigration(self):
@@ -1007,6 +1014,14 @@ class StorageMigration:
         undofile = undofile = '{}.{}'.format(self.scriptname,self.start)
         storage.setundofile(undofile)
         storage.jsonin = self.jsonin
+
+        # 06/03/2021
+        if self.targeted_rollback:
+            self.undocmds[storageserial] = self.undocmds.get(storageserial, { 'pre':[],'post':[], 'objects':{} })
+            # We wish to produce backout commands for individual migrating objects.
+            log.info("targeted_rollback: {}, tweak api to accept this mod".format(self.targeted_rollback))
+            setattr(storage.apis[storageapi], 'undocmds',{})
+
         self.storagearrays[str(storageserial)] = { horcminst: { 'storage':storage } }
 
         if role:
@@ -1704,7 +1719,9 @@ class StorageMigration:
         for instance in self.storages.lockedstorage:
             self.log.info('Unlock storage {}'.format(instance.serial))
             instance.unlockresource()
-            instance.writeundofile()
+            self.writeundofile(instance)
+
+            #instance.writeundofile()
         if self.warnings:
             print('\n{}\n\n{} ({})\n'.format('\n'.join(self.warningmessages),self.endmessage,self.warnings))
         print("Goodbye")
@@ -1749,6 +1766,12 @@ class StorageMigration:
 
 
         for host in self.jsonin[self.migrationtype]['migrationgroups'][self.group]:
+
+            if self.targeted_rollback:
+                self.undocmds[self.source.serial]['objects'][host] = self.undocmds[self.source.serial]['objects'].get(host,[])
+                setattr(self.source.apis[self.source.useapi], 'undocmds', self.undocmds[self.source.serial]['objects'][host])
+                self.log.info("targeted_rollback: {}, tweak api undocmd destination to writeback to storage class".format(self.targeted_rollback))
+            
             self.logtaskstart(taskname,host=host,taskid=taskid)
             try:
                 processpairdisplay(host)
@@ -2828,7 +2851,118 @@ class StorageMigration:
         self.migrationjson[self.migrationtype]['storage'] = {}
         '''
 
+    def lockresource(self,storage):
+        if self.targeted_rollback:
+            setattr(storage.apis[storage.useapi], 'undocmds', self.undocmds[storage.serial]['pre'])
+            self.log.info("targeted_rollback: {}, tweak api undocmd destination to writeback to storage class".format(self.targeted_rollback))    
+        storage.lockresource()
 
+    def unlockresource(self,storage):
+        if self.targeted_rollback:
+            setattr(storage.apis[storage.useapi], 'undocmds', self.undocmds[storage.serial]['post'])
+            self.log.info("targeted_rollback: {}, tweak api undocmd destination to writeback to storage class".format(self.targeted_rollback))    
+        storage.unlockresource()
+
+    def writeundofile(self,storage):
+        
+        if self.targeted_rollback:
+            undodir = '{}{}{}'.format(self.undodir,os.sep,self.group)
+            undofile = '{}{}{}.{}.{}.sh'.format(undodir,os.sep,self.scriptname,self.start,storage.serial)
+            self.createdir(undodir)
+            with open(undofile,"a") as undofile_handler:
+                for postcmd in self.undocmds[storage.serial]['post']:
+                    undofile_handler.write('{}\n'.format(postcmd))
+
+            for host in self.undocmds[storage.serial]['objects']:
+                undocmds = self.undocmds[storage.serial]['objects'][host]
+                if len(undocmds):
+                    with open(undofile,"a") as undofile_handler:
+                        for undocmd in undocmds:
+                            undofile_handler.write('{}\n'.format(undocmd))
+            
+            with open(undofile,"a") as undofile_handler:
+                for precmd in self.undocmds[storage.serial]['pre']:
+                    undofile_handler.write('{}\n'.format(precmd))
+
+            for host in self.undocmds[storage.serial]['objects']:
+                hostundodir = '{}{}{}'.format(undodir,os.sep,host)
+                self.createdir(hostundodir)
+                undofile = '{}{}{}.{}.{}.sh'.format(hostundodir,os.sep,self.scriptname,self.start,storage.serial)
+                if len(undocmds):
+                    cmds = self.undocmds[storage.serial]['post'] + undocmds + self.undocmds[storage.serial]['pre']
+                    with open(undofile,"w") as undofile_handler:
+                        for undocmd in cmds:
+                            undofile_handler.write('{}\n'.format(undocmd))                            
+        else:
+            storage.writeundofile()
+
+    def setpostcleanupdir(self,storage,postcleanupdir):
+        if self.targeted_rollback:
+            self.postcleanupdir = '{}{}{}{}{}'.format(self.basedir,os.sep,'postcleanup',os.sep,self.group)
+        else:
+            storage.setpostcleanupdir(postcleanupdir)
+
+    def setpostcleanupfile(self,storage,postcleanupfile):
+        if not self.targeted_rollback:
+            storage.setpostcleanupfile(self,postcleanupfile)
+
+    def writepostcleanupfile(self,storage,postcleanupcmdregex):
+        
+        if self.targeted_rollback:
+            self.log.debug('Regex {}'.format(postcleanupcmdregex))
+            cleanupdir = self.postcleanupdir
+            self.createdir(cleanupdir)
+            cleanupfile = '{}{}{}.{}.{}.sh'.format(cleanupdir,os.sep,self.scriptname,self.start,storage.serial)
+            with open(cleanupfile,"a") as file_handler:
+                for postcmd in self.undocmds[storage.serial]['post']:
+                    if re.search(postcleanupcmdregex, postcmd):
+                        file_handler.write('{}\n'.format(postcmd))
+
+            for host in self.undocmds[storage.serial]['objects']:
+                undocmds = self.undocmds[storage.serial]['objects'][host]
+                if len(undocmds):
+                    with open(cleanupfile,"a") as file_handler:
+                        for undocmd in undocmds:
+                            if re.search(postcleanupcmdregex, undocmd):
+                                file_handler.write('{}\n'.format(undocmd))
+            
+            with open(cleanupfile,"a") as file_handler:
+                for precmd in self.undocmds[storage.serial]['pre']:
+                    if re.search(postcleanupcmdregex, precmd):
+                        file_handler.write('{}\n'.format(precmd))
+
+            for host in self.undocmds[storage.serial]['objects']:
+                hostcleanupdir = '{}{}{}'.format(cleanupdir,os.sep,host)
+                self.createdir(hostcleanupdir)
+                cleanupfile = '{}{}{}.{}.{}.sh'.format(hostcleanupdir,os.sep,self.scriptname,self.start,storage.serial)
+                if len(undocmds):
+                    cmds = self.undocmds[storage.serial]['post'] + undocmds + self.undocmds[storage.serial]['pre']
+                    with open(cleanupfile,"w") as file_handler:
+                        for undocmd in cmds:
+                            if re.search(postcleanupcmdregex, undocmd):
+                                file_handler.write('{}\n'.format(undocmd))                            
+        else:
+            storage.writeundofile()
+
+    '''
+    def writepostcleanupfile(self,storage,postcleanupcmdregex):
+        
+        if self.targeted_rollback:
+            self.log.debug('Regex {}'.format(postcleanupcmdregex))
+            for host in self.undocmds[storage.serial]['objects']:
+                cleanupdir = '{}{}{}'.format(self.postcleanupdir,os.sep,host)
+                self.createdir(cleanupdir)
+                undocmds = self.undocmds[storage.serial]['objects'][host]
+                if len(undocmds):
+                    cleanupfile = '{}{}{}.{}.{}.sh'.format(cleanupdir,os.sep,self.scriptname,self.start,storage.serial)
+                    postcmds = self.undocmds[storage.serial]['post'] + undocmds + self.undocmds[storage.serial]['pre']
+                    with open(cleanupfile,"w") as undofile_handler:
+                        for postcmd in postcmds:
+                            if re.search(postcleanupcmdregex, postcmd):
+                                undofile_handler.write('{}\n'.format(postcmd))
+        else:
+            storage.writepostcleanupfile(postcleanupcmdregex)
+    '''
 
     # TASK LISTS
 
@@ -2844,6 +2978,20 @@ class StorageMigration:
         def processhost(host):
             if not self.jsonin[self.migrationtype]['migrationgroups'][self.group][host]['omit']:
                 log.info('Processing host: {}'.format(host))
+                # Configure undocmd list
+                if self.targeted_rollback:
+                    self.undocmds[self.source.serial]['objects'][host] = self.undocmds[self.source.serial]['objects'].get(host,[])
+                    self.undocmds[self.target.serial]['objects'][host] = self.undocmds[self.target.serial]['objects'].get(host,[])
+                    setattr(self.source.apis[self.source.useapi], 'undocmds', self.undocmds[self.source.serial]['objects'][host])
+                    setattr(self.target.apis[self.target.useapi], 'undocmds', self.undocmds[self.target.serial]['objects'][host])
+                    self.log.info("targeted_rollback: {}, tweak api undocmd destination to writeback to storage class".format(self.targeted_rollback))
+                    '''
+                      File "/scripts/GAD-migration/hiraid/storagemigration.py", line 2907, in step1tasks
+    processhost(host)
+  File "/scripts/GAD-migration/hiraid/storagemigration.py", line 2871, in processhost
+    setattr(self.source.apis[self.source.useapi], 'undocmds', self.undocmds[self.source.serial]['objects'][host]['post'])
+TypeError: list indices must be integers or slices, not str
+'''
                 # Locate host group ids
                 self.locatehostgroupgids(self.target,host,3)
                 # Configure host groups
@@ -2906,11 +3054,10 @@ class StorageMigration:
             pairrequests = self.createpairs(6)['pairrequests']
             self.monitorpairs(pairrequests,7)
             self.capacityreport(self.target,skipifthisstepcomplete=2,taskid=8)
-            self.source.writeundofile()
-            self.target.writeundofile()
+            self.writeundofile(self.source)
+            #self.target.writeundofile()
         except Exception as e:
             raise StorageException('Unable to creategadpairs, error \'{}\''.format(str(e)),Storage,self.log)
-
 
     def step3tasks(self):
 
