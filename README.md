@@ -1,4 +1,4 @@
-# Work in progress: hiraid 1.0.04
+# Work in progress: hiraid 1.0.05
 hiraid is a Python package for communicating with Hitachi Enterprise storage arrays.
 
 It is capable of communicating through either raidcom or cmrest and can be extended to utilise other communication methods.
