@@ -31,7 +31,7 @@ import os
 import logging
 
 class cmrest:
-    def __init__(self,storage,serial,log,protocol="",address="",port="",storagedeviceid="",user="cmrest",password="cmrest",base="/ConfigurationManager/"):
+    def __init__(self,storage,serial,log,protocol="",address="",port="",user="cmrest",password="cmrest",base="/ConfigurationManager/"):
 
         self.rooturl = '{}://{}:{}'.format(protocol,address,port)
         self.baseurl = '{}{}'.format(self.rooturl,base)
@@ -42,12 +42,13 @@ class cmrest:
         self.password = password
         self.log = log
         self.serial = serial
-        self.storagedeviceid = storagedeviceid
+        
         self.sessionAlivetime = { "aliveTime": 300 }
         #self.parser = cmrestparse.cmrestparser(log)
         self.headers = {'Content-Type': 'application/json'}
         self.parser = Cmrestparser(storage)
         self.cmversion()
+        self.getStorageDeviceId()
         self.getSession()
 
     def get(self,url):
@@ -76,7 +77,6 @@ class cmrest:
       self.checkresponse(r)
       return r.json()
 
-
     def checkresponse(self,r):
         if not r.ok:
             err = "Request failed. url: {}, status_code: {}, reason: {}, text: {}, request-header: {}".format(r.url,r.status_code,r.reason,r.text,r.request.headers)
@@ -93,13 +93,42 @@ class cmrest:
         self.checkresponse(r)
         return r.json()
 
+    def register(self,api='v1/objects/storages/'):
+        url = '{}{}'.format(self.baseurl,api)
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+        r = self.session.get(url)
+        self.checkresponse(r)
+        return r.json()
+
+
+
+
+    def getStorageDeviceId(self):
+        self.log.info(f"Get storageDeviceId from cmrest serial number {self.serial} ( {str(self.serial)[-5:]} )")
+        registeredStorages = self.storages()
+        for registeredStorage in registeredStorages['data']:
+            if str(registeredStorage['serialNumber']) == str(self.serial) or str(registeredStorage['serialNumber']) == str(self.serial)[-5:]:
+                self.storageDeviceId = registeredStorage['storageDeviceId']
+                self.log.info(f"Located registered storageDeviceId '{self.storageDeviceId}'")
+                return registeredStorage['storageDeviceId']
+        err = f"Unable to locate registered storageDeviceId from serial {self.serial}"
+        self.log.info(err)
+        raise Exception(f'{err}')
+
+    def storages(self,api='v1/objects/storages/'):
+        url = '{}{}'.format(self.baseurl,api)
+        r = self.session.get(url)
+        self.checkresponse(r)
+        return r.json()
+
     def identify(self,api='v1/objects/storages/'):
-        url = '{}{}{}'.format(self.baseurl,api,self.storagedeviceid)
+        url = '{}{}{}'.format(self.baseurl,api,self.storageDeviceId)
         data = self.get(url)
         return data
         
     def getSession(self,api='v1/objects/storages/'):
-        url = '{}{}{}{}'.format(self.baseurl,api,self.storagedeviceid,'/sessions')
+        url = '{}{}{}{}'.format(self.baseurl,api,self.storageDeviceId,'/sessions')
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         body = self.sessionAlivetime
@@ -116,15 +145,14 @@ class cmrest:
             #self.session.headers.update({'Authorization':r.headers['WWW-Authenticate']})
 
     def getport(self,api='v1/objects/storages/',optviews=[]):
-        url = '{}{}{}{}'.format(self.baseurl,api,self.storagedeviceid,'/ports')
+        url = '{}{}{}{}'.format(self.baseurl,api,self.storageDeviceId,'/ports')
         data = self.get(url)
         data['views'] = self.parser.getport(data)
         return data
 
-
     def addldevauto(self,poolid,capacityblk,resource_id,start=0,end=65279,associatemap=[{}],api='v1/objects/storages/'):
         jobs = []
-        url = '{}{}{}{}'.format(self.baseurl,api,self.storagedeviceid,'/ldevs')
+        url = '{}{}{}{}'.format(self.baseurl,api,self.storageDeviceId,'/ldevs')
         body = { "poolId":poolid,"startLdevId":start,"endLdevId":end,"blockCapacity":capacityblk,"isParallelExecutionEnabled":True }
 
         for mapper in maplist:

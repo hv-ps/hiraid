@@ -108,11 +108,10 @@ class Storage:
     #    self.identify()
 
 
-    def cmrest(self,protocol,resthost,port,storagedeviceid,userid="cmrest",password="cmrest"):
+    def cmrest(self,protocol,resthost,port,userid="cmrest",password="cmrest"):
         ''' Define cmrest as storage interface api '''
         from . import cmrest
-        self.apis['cmrest'] = cmrest.cmrest(self,self.serial,self.log,protocol,resthost,port,storagedeviceid,userid,password)
-        self.storagedeviceid = storagedeviceid
+        self.apis['cmrest'] = cmrest.cmrest(self,self.serial,self.log,protocol,resthost,port,userid,password)
         self.useapi = 'cmrest'
 
         self.cmidentify()
