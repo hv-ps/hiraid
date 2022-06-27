@@ -23,91 +23,602 @@
 # -----------------------------------------------------------------------------------------------------------------------------------
 
 import re
-import inspect
-import sys
-from . import customviews
-
+import collections
+from .storage_utils import Ldevid, StorageCapacity
+from .v_id import VId
+        
 class Raidcomparser:
-    def __init__(self,storage):
-        self.storage = storage
-        self.log = storage.log
-        self.serial = storage.serial
-        self.setview = customviews.Customviews(storage)
-
+    def __init__(self,raidcom,log):
+        self.log = log
+        self.raidcom = raidcom
+    
+    def updateview(self,view: dict,viewupdate: dict) -> dict:
+        ''' Update dict view with new dict data '''
+        for k, v in viewupdate.items():
+            #if isinstance(v,collections.Mapping):
+            if isinstance(v,collections.abc.Mapping):
+                view[k] = self.updateview(view.get(k,{}),v)
+            else:
+                view[k] = v
+        return view
          
-    def initload(self,stdout,header='',keys=[]):
-        data = [row.strip() for row in list(filter(None,stdout.split('\n')))]
-        try:
-            header = data.pop(0)
-            keys = header.split()
-        except:
-            pass
-        datadict = { 'defaultview': {}, 'list': data, 'metaview': { 'data':{}, 'stats': {} }, 'header': header }
-        return datadict, data, keys
+    def initload(self,cmdreturn,header='',keys=[]):
 
-    def raidqry(self,stdout):
-        datadict, data, keys = self.initload(stdout)
-        for line in data:
+        cmdreturn.data = [row.strip() for row in list(filter(None,cmdreturn.stdout.split('\n')))]
+        if not cmdreturn.data:
+            return
+        else:
+            cmdreturn.header = cmdreturn.data.pop(0)
+            cmdreturn.headers = cmdreturn.header.split()
+
+    def identify(self, view_keyname: str='_identity'):
+
+        if self.raidcom.views['_resource_groups']['0']['V_ID'] == "-":
+            micro_code = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['Micro_ver']
+            identifier = VId.micro_ver[micro_code.split('-')[0]]['v_id']
+        else:
+            identifier = self.raidcom.views['_resource_groups']['0']['V_ID']
+        
+        self.raidcom.v_id = VId.models.get(identifier,{}).get('v_id',None)
+        self.raidcom.vtype = VId.models.get(identifier,{}).get('type',None)
+        self.raidcom.model = " - ".join(VId.models.get(identifier,{}).get('model',[]))
+
+        if not self.raidcom.vtype:
+            raise Exception("Unable to identify self, check v_id.py for supported models")
+
+        view = { 'v_id': self.raidcom.v_id, 'vtype': self.raidcom.vtype, 'model': self.raidcom.model }
+        self.updateview(self.raidcom.views,{view_keyname:view})
+        return type('identity', (object,), {'view':view})()
+
+    def raidqry(self, cmdreturn: object):
+        self.initload(cmdreturn)
+        for line in cmdreturn.data:
             row = line.split()
-            datadict[row[5]] = {}
-            for item,head in zip(row,keys):
-                datadict[row[5]][head] = item
-        return datadict
+            cmdreturn.view[row[5]] = {}
+            for item,head in zip(row,cmdreturn.headers):
+                cmdreturn.view[row[5]][head] = item
 
-    def getresource(self,stdout,optviews: list=[]) -> dict:
+        return cmdreturn
+
+    def getresource(self, cmdreturn: object) -> dict:
         '''
         stdout as input from get resource command
         '''
-        viewsdict, data, keys = self.initload(stdout)
-        viewsdict['metaview']['stats']['resourcegroupcount'] = 0
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'resource_group_count':0 }
 
-        for line in data:
+        for line in cmdreturn.data:
             row = line.split()
             lastfive = row[-5:]
             regex = r'\s+{}\s+{}\s+{}\s+{}\s+{}$'.format(lastfive[0], lastfive[1], lastfive[2], lastfive[3], lastfive[4])
             lastfive.insert(0, re.sub(r'%s' % regex,'',line))
             rgid = lastfive[1]
-            viewsdict['metaview']['data'][rgid] = {}
-            for item,head in zip(lastfive,keys):
-                viewsdict['metaview']['data'][rgid][head] = item
-            viewsdict['metaview']['stats']['resourcegroupcount'] += 1
+            cmdreturn.view[rgid] = {}
+            for item,head in zip(lastfive,cmdreturn.headers):
+                cmdreturn.view[rgid][head] = item
+            cmdreturn.stats['resource_group_count'] += 1
 
-        #viewsdict['defaultview'] = viewsdict['metaview']['data']
-        viewsdict['defaultview'] = getattr(self.setview,"getresource_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
+        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
+        return cmdreturn
 
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,"getresource_"+view)(viewsdict['metaview'],view)
-        
-        return viewsdict
 
-    def getport(self,stdout,optviews: list=[]) -> dict:
-        
-        # stdout: some comments
+    def getport(self,cmdreturn: object,view_keyname: str='_ports'):
+        '''
+        cmdreturn: getport cmdreturn object as input
+        default_view_keyname: default _ports
+        '''
         # Create list and simultaneously filter out empties
         # Drop numeric characters from back of port placed there based upon location in horcm
         # Return dictionary with port as key
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['portcount'] = 0
+        
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'portcount':0 }
 
-        for line in data:
+        for line in cmdreturn.data:
             sline = line.split()
-            if len(sline) != len(headings): raise("header and data length mismatch")
+            if len(sline) != len(cmdreturn.headers): raise("header and data length mismatch")
             sline[0] = re.sub(r'\d+$','',sline[0])
-            if sline[0] not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][sline[0]] = {}
-            for item,head in zip(sline,headings):
-                viewsdict['metaview']['data'][sline[0]][head] = item
-                # This won't work for multi use ports! The count will be incorrect
-                # Also, concatenate port type to a list
-            viewsdict['metaview']['stats']['portcount'] += 1
+            if sline[0] not in cmdreturn.view:
+                cmdreturn.view[sline[0]] = {}
+            for item,head in zip(sline,cmdreturn.headers):
+                cmdreturn.view[sline[0]][head] = item
+                # This won't work for multi use ports! The count will be incorrect - stats should be separated: getport_stats(cmdreturn)
+            cmdreturn.stats['portcount'] += 1
 
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
+        self.updateview(self.raidcom.views,{view_keyname:cmdreturn.view})
+        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
+        return cmdreturn
 
-        return viewsdict
+    def cleanhsd(self,hsd):
+        cl,port,gid = hsd.split('-')
+        port = re.sub(r'\d+$','',port)
+        return f"{cl}-{port}-{gid}"
+
+    def getldev(self,cmdreturn: object) -> object:
+        ldevdata = dict(map(str.strip, row.split(':', 1)) for row in list(filter(None,cmdreturn.stdout.split('\n'))))
+        #ldevdata = dict(map(str.strip, row.split(':', 1)) for row in cmdreturn.stdout.split('\n') if ':' in row)
+        ldevout = {}
+
+        def PORTs(**kwargs):
+            port_data = {}
+            num_ports = int(kwargs['ldevdata']['NUM_PORT'])
+            if num_ports > 0:
+                if (num_ports -1) != kwargs['value'].count(' : '):
+                    message = f"Unable to parse malformed PORTs ( NUM_PORT: {num_ports} ) {kwargs['value']}. Possible \':\' in hostgroup name?"
+                    self.log.error(message)
+                    raise Exception(message)
+                ports = [pdata.strip() for pdata in list(filter(None,kwargs['value'].split(' : ')))]
+                for hsd_lun_name in ports:
+                    hsd,lun,name = hsd_lun_name.split(maxsplit=2)
+                    hsd = self.cleanhsd(hsd)
+                    port_data[hsd] = { "portId":hsd.rsplit('-',1)[0], "hostGroupNumber": hsd.split('-')[-1], "lun":lun, "hostgroupid":hsd, "hostGroupNameAbv": name }
+                    if len(name) > 15:
+                        try:
+                            port_data[hsd]['hostGroupName'] = self.raidcom.views['_ports'][hsd.rsplit('-',1)[0]]['_GIDS'][hsd.split('-')[-1]]['GROUP_NAME']
+                        except KeyError as e:
+                            self.raidcom.gethostgrp_key_detail(hsd.rsplit('-',1)[0])
+                            port_data[hsd]['hostGroupName'] = self.raidcom.views['_ports'][hsd.rsplit('-',1)[0]]['_GIDS'][hsd.split('-')[-1]]['GROUP_NAME']
+                            #print(f"Exception: {e}")
+
+            if len(port_data):
+                kwargs['ldevout']['PORTs'] = port_data
+            else:
+                kwargs['ldevout']['PORTs'] = kwargs['value']
+
+        def VOL_ATTR(**kwargs):
+            kwargs['ldevout']['VOL_ATTR'] = kwargs['value'].split(' : ')
+
+        def VOL_Capacity(**kwargs):
+            capacity = StorageCapacity(kwargs['value'],'blk',format='string')
+            for denom in ['BLK','MB','GB','TB']:
+                kwargs['ldevout'][f'VOL_Capacity({denom})'] = getattr(capacity,denom)
+
+        def Used_Block(**kwargs):
+            capacity = StorageCapacity(kwargs['value'],'blk',format='string')
+            for denom in ['BLK','MB','GB','TB']:
+                kwargs['ldevout'][f'Used_Block({denom})'] = getattr(capacity,denom)
+
+        def LDEV(**kwargs):
+            l = kwargs['value'].split()
+            kwargs['ldevout'][kwargs['key']] = l[0]
+            if len(l) > 1:
+                kwargs['ldevout'][l[1]] = l[3]
+
+        specialfields = {'LDEV': LDEV, 'PORTs': PORTs,'VOL_ATTR': VOL_ATTR, 'VOL_Capacity(BLK)': VOL_Capacity, 'Used_Block(BLK)': Used_Block }    
+        for k, v in ldevdata.items():
+            if k in specialfields:
+                specialfields[k](key=k,value=v,ldevdata=ldevdata,ldevout=ldevout)
+            else:
+                ldevout[k] = v
+
+        cmdreturn.view = { ldevout['LDEV']:ldevout }
+        return cmdreturn
+        
+    def getldevlist(self,cmdreturn: object) -> object:
+
+        listofldevs = list(filter(None,cmdreturn.stdout.split('\n\n')))
+        for ldev in listofldevs:
+            ldevobj = type('obj', (object,), {'stdout' : ldev, 'view': {}})
+            parsedldev = self.getldev(ldevobj)
+            self.updateview(cmdreturn.view,parsedldev.view)
+        return cmdreturn
+
+    def gethostgrp(self,cmdreturn: object) -> object:
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'hostgroupcount':0 }
+
+        for line in cmdreturn.data:
+            hmos = ""
+            hmolist = []
+            sline = line.strip()
+            hmoregex = r'(.*?)([\s\d]+$)'
+            capture = re.search(hmoregex,sline)
+            try:
+                hmos = str(capture.group(2).strip()).split()
+                sline = capture.group(1)
+                hmolist = hmos.split()
+            except:
+                pass
+            
+            row = sline.split()
+            port,gid,serial,hmd = row[0],row[1],row[-2],row[-1]
+            revealHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+serial+r'\s+'+hmd+r')'
+            hostgroupName = re.search(revealHostGroupNameRegex,sline).group(1)
+            port = re.sub(r'\d+$','', port)
+            values = (port,gid,hostgroupName,serial,hmd,sorted(hmolist))
+
+            cmdreturn.view[port] = cmdreturn.view.get(port,{'_GIDS':{}})
+            cmdreturn.view[port]['_GIDS'][gid] = {}
+            cmdreturn.stats['hostgroupcount'] += 1
+
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[port]['_GIDS'][gid][head] = value
+
+        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
+        return cmdreturn
+
+    def gethostgrp_key_detail(self,cmdreturn: object) -> object:
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { '_GIDS':0, '_GIDS_UNUSED':0 }
+
+        for line in cmdreturn.data:
+            hostgroupName = re.findall(r'"([^"]*)"', line)
+            if hostgroupName:
+                line = line.replace(f'"{hostgroupName[0]}"','-')
+            port,gid,rgid,nameSpace,serial,hostmode,host_mode_options = line.split()
+            port = re.sub(r'\d+$','', port)
+            if hostgroupName:
+                nameSpace = hostgroupName[0]
+            if host_mode_options == "-":
+                host_mode_options = []
+            else:
+                host_mode_options = host_mode_options.split(':')
+            values = (port,gid,rgid,nameSpace,serial,hostmode,sorted(host_mode_options))
+
+            cmdreturn.view[port] = cmdreturn.view.get(port,{'_GIDS':{},'_GIDS_UNUSED':{}})
+            gid_key = ('_GIDS','_GIDS_UNUSED')[nameSpace == "-"]
+            cmdreturn.view[port][gid_key][gid] = {}
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[port][gid_key][gid][head] = value
+                cmdreturn.stats[gid_key] += 1
+        
+        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
+
+        return cmdreturn
+
+    def getlun(self,cmdreturn: object) -> object:
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'luncount':0 }
+
+        for line in cmdreturn.data:
+            hmos = ""
+            hmolist = []
+            sline = line.strip()
+            hmoregex = r'(.*?)([\s\d{2,3}]+$)'
+            capture = re.search(hmoregex,sline)
+            try:
+                hmos = str(capture.group(2).strip())
+                sline = capture.group(1)
+                hmolist = hmos.split()
+            except:
+                pass
+            port,gid,hmd,lun,num,ldev,cm,serial,opkma = sline.split()
+            values = sline.split()
+            values.append(sorted(hmolist))
+            values[0] = re.sub(r'\d+$','', values[0])
+            port = re.sub(r'\d+$','', port)
+            #self.log.debug("Port: '"+port+"', Gid: '"+gid+"', hostmode: '"+hmd+"', lun: '"+lun+"', num: '"+num+"', ldev: '"+ldev+"', cm: '"+cm+"', serial: '"+serial+"', opkma: '"+opkma+"', hmos: '"+hmos+"'")
+
+            cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': {} })
+            cmdreturn.view[port]['_GIDS'][gid] = cmdreturn.view[port]['_GIDS'].get(gid,{'_LUNS':{}})
+            #cmdreturn.view[port] = cmdreturn.view.get(port,{ gid:{ '_luns': {}}})
+            cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = {}
+            cmdreturn.stats['luncount'] += 1
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun][head] = value
+
+        return cmdreturn
+
+    def gethbawwn(self,cmdreturn: object) -> object:
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'hbawwncount':0 }
+        if not len(cmdreturn.data):
+            return cmdreturn
+        # Quick fix for when hba_wwn is requested from ELUN port
+        
+        if re.search(r'^PORT\s+WWN',cmdreturn.header):
+            #self.log.warning(f"Skipping ELUN hba_wwn header, cmd returns no GID and therefore won't index into this structure: {vars(cmdreturn)}")
+            return cmdreturn
+        
+        for line in cmdreturn.data:
+            sline = line.strip()
+            regex = r'\s(\w{16}\s{3,4}'+str(self.raidcom.serial)+r')(?:\s+)(.*$)'
+            capture = re.search(regex,sline)
+            wwn,serial = capture.group(1).split()
+            wwn = wwn.lower()
+            wwn_nickname = capture.group(2)
+            row = sline.split()
+            port,gid = row[0],row[1]
+            extractHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+capture.group(1)+r'\s+'+capture.group(2)+r')'
+            hostgroupName = re.search(extractHostGroupNameRegex,sline).group(1)
+            port = re.sub(r'\d+$','', port)
+            values = (port,gid,hostgroupName,wwn,serial,wwn_nickname)
+
+            cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
+            cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
+            cmdreturn.stats['hbawwncount'] += 1
+
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn][head] = value
+
+        return cmdreturn
+
+    def getportlogin(self,cmdreturn):
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'loggedinhostcount':0 }
+
+        for line in cmdreturn.data:
+            col = line.split()
+            port = re.sub(r'\d+$','',col[0])
+            cmdreturn.view[port] = cmdreturn.view.get(port,{'_PORT_LOGINS':{}})
+            login_wwn,serial,dash = col[1],col[2],col[3]
+            cmdreturn.view[port]['_PORT_LOGINS'][login_wwn] = { "Serial#": serial }
+            cmdreturn.stats['loggedinhostcount'] += 1
+
+        return cmdreturn
+    
+    def getpool_key_None(self,cmdreturn) -> dict:
+        
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'poolcount':0 }
+
+        for line in cmdreturn.data:
+            values = line.split()
+            poolid = str(int(values[0]))
+            cmdreturn.view[poolid] = cmdreturn.view.get(poolid,{})
+            for item,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[poolid][head] = item    
+            cmdreturn.stats['poolcount'] += 1
+
+        return cmdreturn
+
+    def getpool_key_opt(self,cmdreturn) -> dict:
+        
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'poolcount':0 }
+
+        for line in cmdreturn.data:
+            values = line.split()
+            pid,pols,u,seq,num,ldev,h,vcap,typ,pm,pt,auto_add_plv = values[0],values[1],values[2],values[-9],values[-8],values[-7],values[-6],values[-5],values[-4],values[-3],values[-2],values[-1]
+            revealpoolnameregex = r'(?:^'+pid+r'\s+'+pols+r'\s+'+u+r'\s+)(.*?)(?:\s'+seq+r'\s+'+num+r'\s+'+ldev+r'\s+'+h+r'\s+'+vcap+r'\s+'+typ+r'\s+'+pm+r'\s+'+pt+r'\s+'+auto_add_plv+r')'
+            poolname = re.search(revealpoolnameregex,line).group(1).strip()
+            poolid = str(int(pid))
+            values = (pid,pols,u,poolname,seq,num,ldev,h,vcap,typ,pm,pt,auto_add_plv)
+            cmdreturn.view[poolid] = cmdreturn.view.get(poolid,{})
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[poolid][head] = value    
+            cmdreturn.stats['poolcount'] += 1
+        return cmdreturn             
+
+    def getpool_key_fmc(self,cmdreturn) -> object:
+        self.getpool_key_None(cmdreturn)
+        return cmdreturn
+
+    def getpool_key_saving(self,cmdreturn) -> object:
+        self.getpool_key_None(cmdreturn)
+        return cmdreturn
+    
+    def getpool_key_basic(self,cmdreturn) -> dict:
+        
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'poolcount':0 }
+
+        for line in cmdreturn.data:
+            values = line.split(maxsplit=22)
+            poolid = str(int(values[0]))
+            cmdreturn.view[poolid] = cmdreturn.view.get(poolid,{})
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[poolid][head] = value    
+            cmdreturn.stats['poolcount'] += 1
+        return cmdreturn
+
+    def getpool_key_powersave(self,cmdreturn) -> object:
+        self.getpool_key_None(cmdreturn)
+        return cmdreturn
+
+    def getpool_key_total_saving(self,cmdreturn) -> object:
+        self.getpool_key_None(cmdreturn)
+        return cmdreturn
+
+    def getpool_key_software_saving(self,cmdreturn) -> object:
+        self.getpool_key_None(cmdreturn)
+        return cmdreturn
+
+    def getpool_key_efficiency(self,cmdreturn: object) -> object:
+        self.getpool_key_None(cmdreturn)
+        return cmdreturn
+
+    def getcopygrp(self,cmdreturn: object) -> dict:
+        
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'copygrpcount':0 }
+
+        for line in cmdreturn.data:
+            values = line.split()
+            if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
+            cmdreturn.view[values[0]] = cmdreturn.view.get(values[0],{})
+            for item,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[values[0]][head] = item
+                # Actually this is not quite right because it is possible to define copy_grps and device_grps with spaces
+            cmdreturn.stats['copygrpcount'] += 1
+
+        return cmdreturn
+
+    def getcommandstatus(self,cmdreturn) -> dict:
+
+        self.initload(cmdreturn)
+        
+        def withreqid(data):
+            #REQID    R SSB1    SSB2    Serial#      ID  Description\n
+            #00000019 -    -       -     358149   10011  -\n
+            for line in cmdreturn.data:                
+                values = (reqid,r,ssb1,ssb2,serial,id,description) = line.split(maxsplit=6)
+                cmdreturn.view[reqid] = cmdreturn.view.get(reqid,{})
+                for value,head in zip(values,cmdreturn.headers):
+                    cmdreturn.view[reqid][head] = value
+
+        def noreqid(data):
+            #HANDLE   SSB1    SSB2    ERR_CNT        Serial#     Description\n
+            # 00de        -       -          0         358149     -\n
+            for line in cmdreturn.data:                
+                values = (handle,ssb1,ssb2,errcnt,serial,description) = line.split(maxsplit=5)
+                for value,head in zip(values,cmdreturn.headers):
+                    cmdreturn.view[head] = value
+
+        if 'REQID' in cmdreturn.headers:
+            withreqid(cmdreturn.data)
+        else:
+            noreqid(cmdreturn.data)
+
+        return cmdreturn
+
+    def getsnapshot(self,cmdreturn) -> object:
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'snapshotcount':0 }
+
+        for line in cmdreturn.data:
+            values = (snapshot_name,ps,stat,serial,ldev,mu,pldev,pid,percent,mode,splttime) = line.split()
+            if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
+            cmdreturn.view[snapshot_name] = cmdreturn.view.get(snapshot_name,{})
+            cmdreturn.stats['snapshotcount'] += 1
+
+        return cmdreturn
+
+    def getsnapshotgroup(self,cmdreturn) -> object:
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'snapshotcount':0 }
+
+        for line in cmdreturn.data:
+            values = (snapshot_name,ps,stat,serial,ldev,mu,pldev,pid,percent,mode,splttime) = line.split()
+            if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
+            cmdreturn.view[snapshot_name] = cmdreturn.view.get(snapshot_name,{})
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[head] = value
+            cmdreturn.stats['snapshotcount'] += 1
+
+        return cmdreturn
+
+
+    def gethostgrptcscan(self,cmdreturn) -> object:
+      
+        self.initload(cmdreturn)
+        for headingIndex in range(0, len(cmdreturn.headers)):
+            if cmdreturn.headers[headingIndex] == '/ALPA/C':
+                x = re.split(r'/', cmdreturn.headers[headingIndex])
+                cmdreturn.headers[headingIndex] = x[1]
+                cmdreturn.headers.insert(headingIndex+1, x[2]) 
+
+        for line in cmdreturn.data:
+            values = line.split()
+            hsdkeys = values[0].split('-')
+            hsdkeys[1] = re.sub(r'\d+$','',hsdkeys[1])
+            values[0] = '-'.join(hsdkeys)
+            if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
+            prikey = port = values[0]
+            seckey = ldevid = values[7]
+            cmdreturn.view[prikey] = cmdreturn.view.get(prikey,{})
+            cmdreturn.view[prikey][seckey] = cmdreturn.view[prikey].get(seckey,{})
+            
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[port][ldevid][head] = value 
+            # Check with Clive:
+            if cmdreturn.view[port][ldevid]['P/S'] == 'SMPL':
+                cmdreturn.view[port][ldevid]['Status'] = 'SMPL'
+
+        return cmdreturn
+   
+    def raidscanremote(self,cmdreturn) -> object:
+        self.gethostgrptcscan(cmdreturn)
+        return cmdreturn
+
+    def raidscanmu(self,cmdreturn,mu) -> dict:
+    
+        self.initload(cmdreturn)
+        for headingIndex in range(0, len(cmdreturn.headers)):
+            if cmdreturn.headers[headingIndex] == '/ALPA/C':
+                x = re.split(r'/', cmdreturn.headers[headingIndex])
+                cmdreturn.headers[headingIndex] = x[1]
+                cmdreturn.headers.insert(headingIndex+1, x[2])  
+
+        cmdreturn.headers.append('mu')
+
+        for line in cmdreturn.data:
+            values = line.split()
+            values.append(mu)
+            hsdkeys = values[0].split('-')
+            hsdkeys[1] = re.sub(r'\d+$','',hsdkeys[1])
+            values[0] = '-'.join(hsdkeys)
+            if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
+            prikey = ldevid = values[7]
+            seckey = mu
+            cmdreturn.view[prikey] = cmdreturn.view.get(prikey,{})
+            cmdreturn.view[prikey][seckey] = cmdreturn.view[prikey].get(seckey,{})
+
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[prikey][seckey][head] = value  
+
+            if cmdreturn.view[prikey][seckey]['P/S'] == 'SMPL':
+                cmdreturn.view[prikey][seckey]['Status'] = 'SMPL'
+
+        return cmdreturn
+
+    def getrcu(self,cmdreturn) -> object:
+        
+        # stdout: some comments
+        # Create list and simultaneously filter out empties
+        # Return dictionary with rcu as key
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'rcucount':0 }
+
+        for line in cmdreturn.data:
+            values = line.split()
+            if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
+            serial = values[0]
+            cmdreturn.view[serial] = cmdreturn.view.get(serial,{})
+            for item,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[serial][head] = item
+            cmdreturn.stats['rcucount'] += 1
+
+        return cmdreturn
+
+    def gethostgrprgid(self,cmdreturn: object, resource_group_id: int) -> object:
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'hostgroupcount':0 }
+        
+        for line in cmdreturn.data:
+            hmos = ""
+            hmolist = []
+            sline = line.strip()
+            hmoregex = r'(.*?)([\s\d]+$)'
+            capture = re.search(hmoregex,sline)
+            try:
+                hmos = str(capture.group(2).strip())
+                sline = capture.group(1)
+                hmolist = hmos.split()
+            except:
+                pass
+            row = sline.split()
+            port,gid,serial,hmd = row[0],row[1],row[-2],row[-1]
+            revealHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+serial+r'\s+'+hmd+r')'
+            hostgroupName = re.search(revealHostGroupNameRegex,sline).group(1)
+            port = re.sub(r'\d+$','', port)
+            
+            values = (port,gid,hostgroupName,serial,hmd,sorted(hmolist),resource_group_id)
+            cmdreturn.headers.append('RSGID')
+
+            cmdreturn.view[port] = cmdreturn.view.get(port,{'_GIDS':{}})
+            cmdreturn.view[port]['_GIDS'][gid] = {}
+            cmdreturn.stats['hostgroupcount'] += 1
+
+            for value,head in zip(values,cmdreturn.headers):
+                cmdreturn.view[port]['_GIDS'][gid][head] = value
+
+        return cmdreturn
+    # OLD BELOW
+
+    '''
+    def getport_default(self,metaview,default_view_keyname: str='_ports'):
+        view = {}
+        view[default_view_keyname] = metaview['data']
+        self.log.debug("view: {}, default_view_keyname {}".format(view,default_view_keyname))
+        self.updateview(self.raidcom.views,view)
+        return view
 
     def getcopygrp(self,stdout,optviews: list=[]) -> dict:
         
@@ -161,7 +672,7 @@ class Raidcomparser:
 
         return viewsdict
 
-    def getportlogin(self,stdout,optviews=[]):
+    def XXXXXXgetportlogin(self,stdout,optviews=[]):
 
         viewsdict, data, headings = self.initload(stdout)
         viewsdict['metaview']['stats']['loggedinhostcount'] = 0
@@ -187,74 +698,29 @@ class Raidcomparser:
         return viewsdict
 
 
-    def gethostgrp(self,stdout,optviews=[]):
+
+
+
+
+
+    def xxxxgethostgrp_key_detail(self,stdout,optviews=[]):
 
         viewsdict, data, headings = self.initload(stdout)
         viewsdict['metaview']['stats']['hostgroupcount'] = 0
-
+        
         for line in data:
-            hmos = ""
-            hmolist = []
-            sline = line.strip()
-            self.log.debug(sline)
-            hmoregex = r'(.*?)([\s\d]+$)'
-            capture = re.search(hmoregex,sline)
-            try:
-                hmos = str(capture.group(2).strip()).split()
-                sline = capture.group(1)
-                hmolist = hmos.split()
-            except:
-                pass
-            
-            row = sline.split()
-            port,gid,serial,hmd = row[0],row[1],row[-2],row[-1]
-            revealHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+serial+r'\s+'+hmd+r')'
-            hostgroupName = re.search(revealHostGroupNameRegex,sline).group(1)
+            hostgroupName = re.findall(r'"([^"]*)"', line)
+            if hostgroupName:
+                line = line.replace(f'"{hostgroupName[0]}"','-')
+            port,gid,rgid,nameSpace,serial,hostmode,host_mode_options = line.split()
             port = re.sub(r'\d+$','', port)
-            self.log.debug('Port {}, gid {}, hostgroupname {}, serial {}, hostmode {}, hmos {}, hmolist {}'.format(port,gid,hostgroupName,serial,hmd,hmos,hmolist))
-            values = (port,gid,hostgroupName,serial,hmd,sorted(hmolist))
-            if port not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'] = { port:{} }
-            viewsdict['metaview']['data'][port][gid] = {}
-            viewsdict['metaview']['stats']['hostgroupcount'] += 1
-
-            for value,head in zip(values,headings):
-                viewsdict['metaview']['data'][port][gid][head] = value  
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-
-    def gethostgrprgid(self,stdout,resourcegroupid,optviews=[]):
-
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['hostgroupcount'] = 0
-
-        for line in data:
-            hmos = ""
-            hmolist = []
-            sline = line.strip()
-            self.log.debug(sline)
-            hmoregex = r'(.*?)([\s\d]+$)'
-            capture = re.search(hmoregex,sline)
-            try:
-                hmos = str(capture.group(2).strip())
-                sline = capture.group(1)
-                hmolist = hmos.split()
-            except:
-                pass
-            row = sline.split()
-            port,gid,serial,hmd = row[0],row[1],row[-2],row[-1]
-            revealHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+serial+r'\s+'+hmd+r')'
-            hostgroupName = re.search(revealHostGroupNameRegex,sline).group(1)
-            port = re.sub(r'\d+$','', port)
-            self.log.debug("Port: '"+port+"', Gid: '"+gid+"', HostgroupName: '"+hostgroupName+"', serial: '"+serial+"', hostmode: '"+hmd+"', hmos: '"+hmos+"', RSGID: '"+resourcegroupid+"'" )
-            values = (port,gid,hostgroupName,serial,hmd,sorted(hmolist),resourcegroupid)
-            headings.append('RSGID')
+            if hostgroupName:
+                nameSpace = hostgroupName[0]
+            if host_mode_options == "-":
+                host_mode_options = []
+            else:
+                host_mode_options = host_mode_options.split(':')
+            values = (port,gid,rgid,nameSpace,serial,hostmode,sorted(host_mode_options))
 
             if port not in viewsdict['metaview']['data']:
                 viewsdict['metaview']['data'] = { port:{} }
@@ -264,12 +730,15 @@ class Raidcomparser:
             for value,head in zip(values,headings):
                 viewsdict['metaview']['data'][port][gid][head] = value  
 
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
+        #viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
+        viewsdict['defaultview'] = getattr(self.setview,"gethostgrp_default")(viewsdict['metaview'])
         if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
         for view in optviews:
             viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
 
-        return viewsdict
+        return viewsdict                
+
+        
 
     def gethostgrpkeyhostgrprgid(self,stdout,resourcegroupid,optviews=[]):
 
@@ -315,7 +784,7 @@ class Raidcomparser:
 
 
 
-    def getlun(self,stdout,optviews=[]) -> dict:
+    def XXXXgetlun(self,stdout,optviews=[]) -> dict:
 
         self.log.debug('Entered Raidcomparser: {}'.format(inspect.currentframe().f_code.co_name))
         viewsdict, data, headings = self.initload(stdout)
@@ -359,82 +828,10 @@ class Raidcomparser:
         return viewsdict
 
     #
-    def gethostgrptcscan(self,stdout,optviews=[]) -> dict:
 
-        self.log.debug('Entered Raidcomparser: {}'.format(inspect.currentframe().f_code.co_name))
-        viewsdict, data, headings = self.initload(stdout)
-        #viewsdict['metaview']['stats']['luncount'] = 0
-        for headingIndex in range(0, len(headings)):
-            if headings[headingIndex] == '/ALPA/C':
-                x = re.split(r'/', headings[headingIndex])
-                headings[headingIndex] = x[1]
-                headings.insert(headingIndex+1, x[2]) 
-
-        for line in data:
-            sline = line.split()
-            keys = sline[0].split('-')
-            keys[1] = re.sub(r'\d+$','',keys[1])
-            sline[0] = '-'.join(keys)
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            prikey = sline[0]
-            seckey = sline[7]
-
-            if prikey not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'] = { prikey:{} }
-            if seckey not in viewsdict['metaview']['data'][prikey]:
-                viewsdict['metaview']['data'][prikey][seckey] = {}
-
-            for value,head in zip(sline,headings):
-                viewsdict['metaview']['data'][prikey][seckey][head] = value 
-
-            if viewsdict['metaview']['data'][prikey][seckey]['P/S'] == 'SMPL':
-                viewsdict['metaview']['data'][prikey][seckey]['Status'] = 'SMPL'
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
     #
 
-    def raidscanremote(self,stdout,optviews=[]) -> dict:
-    
-        self.log.debug('Entered Raidcomparser: {}'.format(inspect.currentframe().f_code.co_name))
-        viewsdict, data, headings = self.initload(stdout)
-        #viewsdict['metaview']['stats']['luncount'] = 0
-        for headingIndex in range(0, len(headings)):
-            if headings[headingIndex] == '/ALPA/C':
-                x = re.split(r'/', headings[headingIndex])
-                headings[headingIndex] = x[1]
-                headings.insert(headingIndex+1, x[2]) 
 
-        for line in data:
-            sline = line.split()
-            keys = sline[0].split('-')
-            keys[1] = re.sub(r'\d+$','',keys[1])
-            sline[0] = '-'.join(keys)
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            prikey = sline[0]
-            seckey = sline[7]
-
-            if prikey not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'] = { prikey:{} }
-            if seckey not in viewsdict['metaview']['data'][prikey]:
-                viewsdict['metaview']['data'][prikey][seckey] = {}
-
-            for value,head in zip(sline,headings):
-                viewsdict['metaview']['data'][prikey][seckey][head] = value 
-
-            if viewsdict['metaview']['data'][prikey][seckey]['P/S'] == 'SMPL':
-                viewsdict['metaview']['data'][prikey][seckey]['Status'] = 'SMPL'
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
 
     def raidscanmu(self,stdout,mu,optviews=[]) -> dict:
     
@@ -479,138 +876,9 @@ class Raidcomparser:
         return viewsdict
 
 
-    def getldev(self,stdout,optviews=[]): 
 
-        helperfunctions = {'gethostgroup':self.gethostgrp }
-        viewsdict = { 'defaultview': {}, 'list': [], 'metaview': { 'data':{}, 'stats': {} }, 'header': [] }
-        ldevdict = {}
 
-        def returnldevid(self,value):
-            out = { "in":value }
-            pattern = re.compile('\w{2}:\w{2}')
-            if pattern.match(str(value)):
-                self.log.debug('Matched storage hexadecimal: {}'.format(value))
-                out['culdev'] = value
-                out['decimal'] = int(value.replace(':',''),16)
-            else:
-                self.log.debug('Decimal input: {}'.format(value))
-                out['decimal'] = value
-                hexadecimal = format(int(value), '02x')
-                while len(hexadecimal) < 4:
-                    hexadecimal = "0" + hexadecimal
-                out['culdev'] = hexadecimal[:2] + ":" + hexadecimal[2:]
-            self.log.debug("returning: {}".format(out))
-            return out
-
-        def sanitisehostgroupid(hostgroupid):
-            output = {}
-            output['portid'] = '-'.join(hostgroupid.split('-')[:2])
-            output['portid'] = re.sub(r'\d+$','',output['portid'])
-            output['gid'] = hostgroupid.split('-')[-1]
-            output['hostgroupid'] = '{}-{}'.format(output['portid'],output['gid'])
-            return output
-
-        def PORTs(values,ldevdict,row):
-            hostgroupids = {}
-            if int(ldevdict['NUM_PORT']) > 0:
-                if (int(ldevdict['NUM_PORT']) -1) != values.count(' : '):
-                    message = 'Malformed PORTs row {}, unable to parse ldev {}. Possible \':\' in hostgroup name?'.format(row,ldevdict['LDEV'])
-                    self.log.info(message)
-                    raise Exception(message)
-
-                portdata = [row.strip() for row in list(filter(None,values.split(' : ')))]
-                for portlunname in portdata:
-                    portlunnamelist = portlunname.split()
-                    cleanportdata = sanitisehostgroupid(portlunnamelist[0])
-                    hostgroupids[cleanportdata['hostgroupid']] = { "portId":cleanportdata['portid'], "hostGroupNumber": cleanportdata['gid'], "lun":portlunnamelist[1], "hostgroupid":cleanportdata['hostgroupid'],"hostGroupNameAbv":" ".join(portlunnamelist[2:]) }
-                    try:
-                        hostgroupids[cleanportdata['hostgroupid']]['hostGroupName'] = self.storage.views['_ports'][cleanportdata['portid']]['_host_grps'][cleanportdata['gid']]['GROUP_NAME']
-                    except KeyError:
-                        self.log.info("Unable to populate true host group name from self, fetching data")
-                        self.storage.gethostgrp(cleanportdata['portid'])
-                        hostgroupids[cleanportdata['hostgroupid']]['hostGroupName'] = self.storage.views['_ports'][cleanportdata['portid']]['_host_grps'][cleanportdata['gid']]['GROUP_NAME']
-
-            return hostgroupids
-            #portregex = r'(^CL\w-\D+\d?-\d+\s\d+\s[\w\s:-_]{1,16})(\s:\s|$)'
-
-        def VOL_ATTR(values,ldevdict,row):
-            return values.split(' : ')
-
-        specialfields = {'PORTs': PORTs,'VOL_ATTR': VOL_ATTR}
-        
-        data = [row.strip() for row in list(filter(None,stdout.split('\n')))]
-        
-        #for i, row in enumerate(data): 
-        #    if re.search("^LDEV : ", row):
-        #        ldevrow = data.pop(i)
-        #        break
-
-        #ldevfix = ldevrow.split()
-        #ldevid = ldevfix[2]
-        #culdev = returnldevid(self,ldevid)
-        #ldevdict[ldevid] = {}
-
-        #if len(ldevfix) > 3:
-        #    data.insert(0," ".join(ldevfix[3:]))
-        #    data.insert(0," ".join(ldevfix[:3]))
-        #else:
-        #    data.insert(0,ldevrow)
- 
-        headervalueregex = r'(^.*?)(?:\s:?)(.*$)'
-        for row in data:
-            self.log.debug("ROW: "+row)
-            capture = re.search(headervalueregex,row)
-            header = capture.group(1)
-            value = capture.group(2).strip()
-
-            if re.search("^Serial#",row):
-                serialrow = row
-                continue
-
-            if re.search("^LDEV : ",row):
-                ldevfix = row.split()
-                ldevid = ldevfix[2]
-                culdev = returnldevid(self,ldevid)['culdev']
-                ldevdict[ldevid] = {}
-                ldevdict[ldevid][ldevfix[0]] = ldevfix[2]
-                ldevdict[ldevid]['CULDEV'] = culdev
-                viewsdict['header'].append(ldevfix[0])
-                viewsdict['header'].append('CULDEV')
-                
-                if len(ldevfix) > 3:
-                    ldevdict[ldevid][ldevfix[0]] = ldevfix[2]
-                    ldevdict[ldevid][ldevfix[3]] = ldevfix[5]
-                    virtualculdev = returnldevid(self,ldevfix[5])['culdev']
-                    additionalldevheader = 'CULDEV_{}'.format(ldevfix[3])
-                    ldevdict[ldevid][additionalldevheader] = virtualculdev
-                    viewsdict['header'].append(ldevfix[3])
-                    viewsdict['header'].append(additionalldevheader)
-
-                serial = serialrow.split()
-                ldevdict[ldevid][serial[0]] = serial[2]
-
-                continue
-
-            viewsdict['header'].append(header)
-
-            try:
-                parsedfield = specialfields[header](value,ldevdict[ldevid],row)
-                ldevdict[ldevid][header] = parsedfield
-            except KeyError:
-                ldevdict[ldevid][header] = value
-                pass
-
-        viewsdict['metaview']['data'] = ldevdict
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-
-        for view in optviews:
-            self.log.debug("Customview "+view)
-            viewsdict[view] = getattr(customviews,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        self.log.debug(ldevdict)
-        return viewsdict
-
-    def gethbawwn(self,stdout,optviews=[]) -> dict:
+    def XXXXgethbawwn(self,stdout,optviews=[]) -> dict:
 
         viewsdict, data, headings = self.initload(stdout)
         viewsdict['metaview']['stats']['hbawwncount'] = 0
@@ -812,3 +1080,4 @@ class Raidcomparser:
 
         return viewsdict
 
+    '''

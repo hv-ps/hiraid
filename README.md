@@ -1,18 +1,12 @@
-# Work in progress: hiraid 1.0.05
-hiraid is a Python package for communicating with Hitachi Enterprise storage arrays.
+# Work in progress: hiraid 1.0.00
+hiraid is a Python raidcom wrapper for communicating with Hitachi enterprise storage arrays.
 
-It is capable of communicating through either raidcom or cmrest and can be extended to utilise other communication methods.
+raidcom output is parsed and stored into a logical structure beneath storageobject.views.
 
-Each command / cmrest output is stored in a logical structure beneath storageobject.views, this view can be saved as a cache file and reloaded onto the raid object in a subsequent script.
+Some useful storage admin functions can be found in entry point script 'radmin' ( radmin -h )
 
-For each api capability ( raidcom / cmrest ) a parser exists in order to serialise the data into dictionaries which are then passed to a views class to produce the default stored view. Customviews can be used to arrange data how you need it or even override the default views.
-
-The raidcom piece is well underway and has already been expanded several times as needs have risen.
-
-CMrest is fairly barebones but ready to be expanded; the mechanism for instantiating raid objects which communicate through cmrest is in place and is demonstrated under the scripts directory ( /usr/bin/local/raid* after installation ).
-
-## Long term goal
-Normalising the data in order to achieve standard views of the storage no matter which api is used would allow for the highest degree of flexibility and is the current long term aspiration for this utility.
+## Futures roadmap
+Add cmrest capability
 
 ### Install
 > pip3 install git+https://github.com/hv-ps/hiraid.git
@@ -23,9 +17,27 @@ https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/
 https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on
 
 ### Quick start
-> from hiraid import raidlib  
-> import logging  
-> target_serial = 53511  
-> targetstorage = raidlib.Storage(target_serial,log)  
-> targetstorage.raidcom(horcminst)  
-> targetports = targetstorage.getport()  
+> from hiraid.raidcom import Raidcom  
+> storage_serial = 53511  
+> horcm_instance = 0
+> storage = Raidcom(storage_serial,0)  
+> ports = storage.getport()  
+> print(json.dumps(ports.view,indent=4))  
+> print(json.dumps(ports.stats))  
+
+### Index your host groups, luns and associated ldevs
+> storage.getpool(key='basic')  
+> ports = storage.getport().view.keys()  
+> hostgroups = storage.concurrent_gethostgrps(ports=ports)  
+> allhsds = [f"{port}-{gid}" for port in hostgroups.view for gid in hostgroups.view[port]['_GIDS']]  
+> storage.concurrent_getportlogins(ports=ports)  
+> storage.concurrent_gethbawwns(portgids=allhsds)  
+> storage.concurrent_getluns(portgids=allhsds)  
+> ldevlist = set([ self.raidcom.views['_ports'][port]['_GIDS'][gid]['_LUNS'][lun]['LDEV'] for port in self.raidcom.views['_ports'] for gid in self.raidcom.views['_ports'][port].get('_GIDS',{}) for lun in self.raidcom.views['_ports'][port]['_GIDS'][gid].get('_LUNS',{}) ])  
+> storage.concurrent_getldevs(ldevlist)  
+> file = f"/var/tmp/{storage.serial}__{datetime.now().strftime('%d-%m-%Y_%H.%M.%S')}.json"  
+> with open(file,'w') as w:  
+>   w.write(json.dumps(storage.views,indent=4))
+
+### Index your host groups, luns and associated ldevs using the entry point script
+# radmin index -I0 -s 53511

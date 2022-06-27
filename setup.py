@@ -6,19 +6,14 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='hiraid',
-    version='1.0.06',
-    description='Hitachi storage communication toolkit',
+    version='1.0.0',
+    description='Hitachi raidcom wrapper',
     long_description=long_description,
     long_description_content_type='text/markdown',
     author='Darren Chambers',
     author_email='darren.chambers@hitachivantara.com',
     url='https://github.com/hv-ps/hiraid',
     packages=setuptools.find_packages(),
-    install_requires=[ ],
-
-    scripts = [
-	'scripts/raid-get-ports.py',
-	'scripts/raid-get-ports-cmrest.py',
-	'scripts/raid-get-ports-cmrest-hidepwd.py',
-	]
+    install_requires=[],
+    #entry_points = { 'console_scripts':['radmin = hiraid.radmin:main'] }
 )
