@@ -300,8 +300,10 @@ class Raidcomparser:
             if host_mode_options == "-":
                 host_mode_options = []
             else:
-                host_mode_options = host_mode_options.split(':')
-            values = (port,gid,rgid,nameSpace,serial,hostmode,sorted(host_mode_options),host_grp_id)
+                #host_mode_options = sorted([int(host_mode) for host_mode in host_mode_options.split(':')])
+                host_mode_options = [str(hmo) for hmo in sorted([int(opt) for opt in host_mode_options.split(':')])]
+
+            values = (port,gid,rgid,nameSpace,serial,hostmode,host_mode_options,host_grp_id)
             cmdreturn.headers.append("HOST_GRP_ID")
             prefiltered_host_grps.append(dict(zip(cmdreturn.headers, values)))
 
@@ -379,7 +381,7 @@ class Raidcomparser:
             cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
             cmdreturn.stats['hbawwncount'] += 1
             cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
-            
+
             for value,head in zip(values,cmdreturn.headers):
                 cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn][head] = value
 
