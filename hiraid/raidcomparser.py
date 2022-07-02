@@ -24,7 +24,8 @@
 
 import re
 import collections
-from .storage_utils import Ldevid, StorageCapacity
+from historutils.historutils import Storcapunits
+from .cmdview import Cmdview
 from .v_id import VId
         
 class Raidcomparser:
@@ -35,7 +36,6 @@ class Raidcomparser:
     def updateview(self,view: dict,viewupdate: dict) -> dict:
         ''' Update dict view with new dict data '''
         for k, v in viewupdate.items():
-            #if isinstance(v,collections.Mapping):
             if isinstance(v,collections.abc.Mapping):
                 view[k] = self.updateview(view.get(k,{}),v)
             else:
@@ -44,35 +44,41 @@ class Raidcomparser:
          
     def initload(self,cmdreturn,header='',keys=[]):
 
-        cmdreturn.data = [row.strip() for row in list(filter(None,cmdreturn.stdout.split('\n')))]
-        if not cmdreturn.data:
+        cmdreturn.rawdata = [row.strip() for row in list(filter(None,cmdreturn.stdout.split('\n')))]
+        if not cmdreturn.rawdata:
             return
         else:
-            cmdreturn.header = cmdreturn.data.pop(0)
+            cmdreturn.header = cmdreturn.rawdata.pop(0)
             cmdreturn.headers = cmdreturn.header.split()
 
     def identify(self, view_keyname: str='_identity'):
 
+        micro_ver = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['Micro_ver']
         if self.raidcom.views['_resource_groups']['0']['V_ID'] == "-":
-            micro_code = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['Micro_ver']
-            identifier = VId.micro_ver[micro_code.split('-')[0]]['v_id']
+            identifier = VId.micro_ver[micro_ver.split('-')[0]]['v_id']
         else:
             identifier = self.raidcom.views['_resource_groups']['0']['V_ID']
         
         self.raidcom.v_id = VId.models.get(identifier,{}).get('v_id',None)
         self.raidcom.vtype = VId.models.get(identifier,{}).get('type',None)
         self.raidcom.model = " - ".join(VId.models.get(identifier,{}).get('model',[]))
+        self.raidcom.micro_ver = micro_ver
+        self.raidcom.cache = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['Cache(MB)']
+        self.raidcom.horcm_ver = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['HORCM_ver']
 
         if not self.raidcom.vtype:
             raise Exception("Unable to identify self, check v_id.py for supported models")
-
-        view = { 'v_id': self.raidcom.v_id, 'vtype': self.raidcom.vtype, 'model': self.raidcom.model }
-        self.updateview(self.raidcom.views,{view_keyname:view})
-        return type('identity', (object,), {'view':view})()
+        
+        view = { 'v_id': self.raidcom.v_id, 'vtype': self.raidcom.vtype, 'model': self.raidcom.model, 'micro_ver': self.raidcom.micro_ver, 'cache': self.raidcom.cache, 'horcm_ver': self.raidcom.horcm_ver, 'serial': self.raidcom.serial }
+        #cmdreturn = Cmdview(returncode=0,stdout=view,stderr=None)
+        cmdreturn = Cmdview("identify")
+        cmdreturn.stdout = view
+        cmdreturn.view = view
+        return cmdreturn
 
     def raidqry(self, cmdreturn: object):
         self.initload(cmdreturn)
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             row = line.split()
             cmdreturn.view[row[5]] = {}
             for item,head in zip(row,cmdreturn.headers):
@@ -87,7 +93,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'resource_group_count':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             row = line.split()
             lastfive = row[-5:]
             regex = r'\s+{}\s+{}\s+{}\s+{}\s+{}$'.format(lastfive[0], lastfive[1], lastfive[2], lastfive[3], lastfive[4])
@@ -98,7 +104,7 @@ class Raidcomparser:
                 cmdreturn.view[rgid][head] = item
             cmdreturn.stats['resource_group_count'] += 1
 
-        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
+        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
 
@@ -114,7 +120,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'portcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             sline = line.split()
             if len(sline) != len(cmdreturn.headers): raise("header and data length mismatch")
             sline[0] = re.sub(r'\d+$','',sline[0])
@@ -126,8 +132,13 @@ class Raidcomparser:
             cmdreturn.stats['portcount'] += 1
 
         self.updateview(self.raidcom.views,{view_keyname:cmdreturn.view})
-        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
+        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
+
+    def splitportgid(self,hsd):
+        clport,gid = hsd.rsplit(maxsplit=1)
+        clport = re.sub(r'\d+$','',clport)
+        return clport,gid
 
     def cleanhsd(self,hsd):
         cl,port,gid = hsd.split('-')
@@ -169,14 +180,14 @@ class Raidcomparser:
             kwargs['ldevout']['VOL_ATTR'] = kwargs['value'].split(' : ')
 
         def VOL_Capacity(**kwargs):
-            capacity = StorageCapacity(kwargs['value'],'blk',format='string')
+            capacity = Storcapunits(kwargs['value'],'blk')
             for denom in ['BLK','MB','GB','TB']:
-                kwargs['ldevout'][f'VOL_Capacity({denom})'] = getattr(capacity,denom)
+                kwargs['ldevout'][f'VOL_Capacity({denom})'] = str(getattr(capacity,denom))
 
         def Used_Block(**kwargs):
-            capacity = StorageCapacity(kwargs['value'],'blk',format='string')
+            capacity = Storcapunits(kwargs['value'],'blk')
             for denom in ['BLK','MB','GB','TB']:
-                kwargs['ldevout'][f'Used_Block({denom})'] = getattr(capacity,denom)
+                kwargs['ldevout'][f'Used_Block({denom})'] = str(getattr(capacity,denom))
 
         def LDEV(**kwargs):
             l = kwargs['value'].split()
@@ -208,7 +219,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'hostgroupcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             hmos = ""
             hmolist = []
             sline = line.strip()
@@ -235,37 +246,71 @@ class Raidcomparser:
             for value,head in zip(values,cmdreturn.headers):
                 cmdreturn.view[port]['_GIDS'][gid][head] = value
 
-        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
+        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
-    def gethostgrp_key_detail(self,cmdreturn: object) -> object:
+    def gethostgrp_key_detail(self,cmdreturn: object, host_grp_filter: dict={}) -> object:
 
+        '''
+        host_grp_filter = { 'KEY': 'VALUE' | ['VALUE1','VALUE2'], 'KEY2': 'VALUE' | ['VALUE1','VALUE2'] }\n
+        e.g. host_grp_filter = { 'HMD': ['LINUX/IRIX','VMWARE_EX'] } filters host groups where HMD is LINUX/IRIX or VMWARE_EX\n
+        host_grp_filter is case sensitive in both the key and the value and allows host_grps through only if ALL criteria matches.\n
+        Remember that pretty much all of the values are parsed into strings, RGID for example is a string.\n
+        '''
         self.initload(cmdreturn)
         cmdreturn.stats = { '_GIDS':0, '_GIDS_UNUSED':0 }
 
-        for line in cmdreturn.data:
+        def filter_host_grps(host_grp):
+            for key, val in host_grp_filter.items():
+                if key not in host_grp:
+                    return False
+            for key, val in host_grp_filter.items():
+                if isinstance(val,str):
+                    if host_grp[key] != val:
+                        return False
+                elif isinstance(val,list):
+                    if host_grp[key] not in val:
+                        return False
+                else:
+                    return False
+            return True
+
+        def hostgrpsview(gid_key,data):
+            for host_grp_dict in data:
+                self.log.info(host_grp_dict)
+                port = host_grp_dict['PORT']
+                gid = host_grp_dict['GID']
+                cmdreturn.view[port] = cmdreturn.view.get(port,{})
+                cmdreturn.view[port][gid_key] = cmdreturn.view[port].get(gid_key,{})
+                cmdreturn.view[port][gid_key][gid] = host_grp_dict
+                cmdreturn.data.append(host_grp_dict)
+                cmdreturn.stats[gid_key] += 1
+
+        prefiltered_host_grps = []
+        for line in cmdreturn.rawdata:
             hostgroupName = re.findall(r'"([^"]*)"', line)
             if hostgroupName:
                 line = line.replace(f'"{hostgroupName[0]}"','-')
             port,gid,rgid,nameSpace,serial,hostmode,host_mode_options = line.split()
             port = re.sub(r'\d+$','', port)
+            host_grp_id = f"{port}-{gid}"
+
             if hostgroupName:
                 nameSpace = hostgroupName[0]
             if host_mode_options == "-":
                 host_mode_options = []
             else:
                 host_mode_options = host_mode_options.split(':')
-            values = (port,gid,rgid,nameSpace,serial,hostmode,sorted(host_mode_options))
+            values = (port,gid,rgid,nameSpace,serial,hostmode,sorted(host_mode_options),host_grp_id)
+            cmdreturn.headers.append("HOST_GRP_ID")
+            prefiltered_host_grps.append(dict(zip(cmdreturn.headers, values)))
 
-            cmdreturn.view[port] = cmdreturn.view.get(port,{'_GIDS':{},'_GIDS_UNUSED':{}})
-            gid_key = ('_GIDS','_GIDS_UNUSED')[nameSpace == "-"]
-            cmdreturn.view[port][gid_key][gid] = {}
-            for value,head in zip(values,cmdreturn.headers):
-                cmdreturn.view[port][gid_key][gid][head] = value
-                cmdreturn.stats[gid_key] += 1
-        
-        if cmdreturn.header: cmdreturn.data.insert(0,cmdreturn.header)
-
+        filtered_host_grps = list(filter(filter_host_grps,prefiltered_host_grps))
+        used_host_grps = list(filter(lambda x: (x['GROUP_NAME'] != '-'),filtered_host_grps))
+        unused_host_grps = list(filter(lambda x: (x['GROUP_NAME'] == '-'),filtered_host_grps))
+        hostgrpsview('_GIDS',used_host_grps)
+        hostgrpsview('_GIDS_UNUSED',unused_host_grps)
+        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
     def getlun(self,cmdreturn: object) -> object:
@@ -273,7 +318,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'luncount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             hmos = ""
             hmolist = []
             sline = line.strip()
@@ -288,15 +333,16 @@ class Raidcomparser:
             port,gid,hmd,lun,num,ldev,cm,serial,opkma = sline.split()
             values = sline.split()
             values.append(sorted(hmolist))
-            values[0] = re.sub(r'\d+$','', values[0])
-            port = re.sub(r'\d+$','', port)
-            #self.log.debug("Port: '"+port+"', Gid: '"+gid+"', hostmode: '"+hmd+"', lun: '"+lun+"', num: '"+num+"', ldev: '"+ldev+"', cm: '"+cm+"', serial: '"+serial+"', opkma: '"+opkma+"', hmos: '"+hmos+"'")
-
+            port = values[0] = re.sub(r'\d+$','', values[0])
+            host_grp_id = f"{port}-{gid}"
+            cmdreturn.headers.insert(0,"HOST_GRP_ID")
+            values.insert(0,host_grp_id)
             cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': {} })
             cmdreturn.view[port]['_GIDS'][gid] = cmdreturn.view[port]['_GIDS'].get(gid,{'_LUNS':{}})
-            #cmdreturn.view[port] = cmdreturn.view.get(port,{ gid:{ '_luns': {}}})
             cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = {}
             cmdreturn.stats['luncount'] += 1
+            cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
+
             for value,head in zip(values,cmdreturn.headers):
                 cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun][head] = value
 
@@ -306,7 +352,7 @@ class Raidcomparser:
 
         self.initload(cmdreturn)
         cmdreturn.stats = { 'hbawwncount':0 }
-        if not len(cmdreturn.data):
+        if not len(cmdreturn.rawdata):
             return cmdreturn
         # Quick fix for when hba_wwn is requested from ELUN port
         
@@ -314,7 +360,7 @@ class Raidcomparser:
             #self.log.warning(f"Skipping ELUN hba_wwn header, cmd returns no GID and therefore won't index into this structure: {vars(cmdreturn)}")
             return cmdreturn
         
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             sline = line.strip()
             regex = r'\s(\w{16}\s{3,4}'+str(self.raidcom.serial)+r')(?:\s+)(.*$)'
             capture = re.search(regex,sline)
@@ -326,12 +372,14 @@ class Raidcomparser:
             extractHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+capture.group(1)+r'\s+'+capture.group(2)+r')'
             hostgroupName = re.search(extractHostGroupNameRegex,sline).group(1)
             port = re.sub(r'\d+$','', port)
-            values = (port,gid,hostgroupName,wwn,serial,wwn_nickname)
-
+            host_grp_id = f"{port}-{gid}"
+            values = (host_grp_id,port,gid,hostgroupName,wwn,serial,wwn_nickname)
+            cmdreturn.headers.insert(0,"HOST_GRP_ID")
             cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
             cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
             cmdreturn.stats['hbawwncount'] += 1
-
+            cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
+            
             for value,head in zip(values,cmdreturn.headers):
                 cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn][head] = value
 
@@ -342,7 +390,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'loggedinhostcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             col = line.split()
             port = re.sub(r'\d+$','',col[0])
             cmdreturn.view[port] = cmdreturn.view.get(port,{'_PORT_LOGINS':{}})
@@ -357,7 +405,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'poolcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = line.split()
             poolid = str(int(values[0]))
             cmdreturn.view[poolid] = cmdreturn.view.get(poolid,{})
@@ -372,7 +420,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'poolcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = line.split()
             pid,pols,u,seq,num,ldev,h,vcap,typ,pm,pt,auto_add_plv = values[0],values[1],values[2],values[-9],values[-8],values[-7],values[-6],values[-5],values[-4],values[-3],values[-2],values[-1]
             revealpoolnameregex = r'(?:^'+pid+r'\s+'+pols+r'\s+'+u+r'\s+)(.*?)(?:\s'+seq+r'\s+'+num+r'\s+'+ldev+r'\s+'+h+r'\s+'+vcap+r'\s+'+typ+r'\s+'+pm+r'\s+'+pt+r'\s+'+auto_add_plv+r')'
@@ -398,7 +446,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'poolcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = line.split(maxsplit=22)
             poolid = str(int(values[0]))
             cmdreturn.view[poolid] = cmdreturn.view.get(poolid,{})
@@ -428,7 +476,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'copygrpcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = line.split()
             if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
             cmdreturn.view[values[0]] = cmdreturn.view.get(values[0],{})
@@ -446,7 +494,7 @@ class Raidcomparser:
         def withreqid(data):
             #REQID    R SSB1    SSB2    Serial#      ID  Description\n
             #00000019 -    -       -     358149   10011  -\n
-            for line in cmdreturn.data:                
+            for line in cmdreturn.rawdata:                
                 values = (reqid,r,ssb1,ssb2,serial,id,description) = line.split(maxsplit=6)
                 cmdreturn.view[reqid] = cmdreturn.view.get(reqid,{})
                 for value,head in zip(values,cmdreturn.headers):
@@ -455,15 +503,15 @@ class Raidcomparser:
         def noreqid(data):
             #HANDLE   SSB1    SSB2    ERR_CNT        Serial#     Description\n
             # 00de        -       -          0         358149     -\n
-            for line in cmdreturn.data:                
+            for line in cmdreturn.rawdata:                
                 values = (handle,ssb1,ssb2,errcnt,serial,description) = line.split(maxsplit=5)
                 for value,head in zip(values,cmdreturn.headers):
                     cmdreturn.view[head] = value
 
         if 'REQID' in cmdreturn.headers:
-            withreqid(cmdreturn.data)
+            withreqid(cmdreturn.rawdata)
         else:
-            noreqid(cmdreturn.data)
+            noreqid(cmdreturn.rawdata)
 
         return cmdreturn
 
@@ -471,7 +519,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'snapshotcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = (snapshot_name,ps,stat,serial,ldev,mu,pldev,pid,percent,mode,splttime) = line.split()
             if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
             cmdreturn.view[snapshot_name] = cmdreturn.view.get(snapshot_name,{})
@@ -483,7 +531,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'snapshotcount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = (snapshot_name,ps,stat,serial,ldev,mu,pldev,pid,percent,mode,splttime) = line.split()
             if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
             cmdreturn.view[snapshot_name] = cmdreturn.view.get(snapshot_name,{})
@@ -503,7 +551,7 @@ class Raidcomparser:
                 cmdreturn.headers[headingIndex] = x[1]
                 cmdreturn.headers.insert(headingIndex+1, x[2]) 
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = line.split()
             hsdkeys = values[0].split('-')
             hsdkeys[1] = re.sub(r'\d+$','',hsdkeys[1])
@@ -537,7 +585,7 @@ class Raidcomparser:
 
         cmdreturn.headers.append('mu')
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = line.split()
             values.append(mu)
             hsdkeys = values[0].split('-')
@@ -565,7 +613,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'rcucount':0 }
 
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             values = line.split()
             if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
             serial = values[0]
@@ -581,7 +629,7 @@ class Raidcomparser:
         self.initload(cmdreturn)
         cmdreturn.stats = { 'hostgroupcount':0 }
         
-        for line in cmdreturn.data:
+        for line in cmdreturn.rawdata:
             hmos = ""
             hmolist = []
             sline = line.strip()

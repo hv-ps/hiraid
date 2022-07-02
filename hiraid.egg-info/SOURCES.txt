@@ -8,8 +8,10 @@ hiraid/raidcom.py
 hiraid/raidcomparser.py
 hiraid/raidcomstats.py
 hiraid/storage_utils.py
+hiraid/storagecapabilities.py
 hiraid/v_id.py
 hiraid.egg-info/PKG-INFO
 hiraid.egg-info/SOURCES.txt
 hiraid.egg-info/dependency_links.txt
+hiraid.egg-info/requires.txt
 hiraid.egg-info/top_level.txt

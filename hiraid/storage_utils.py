@@ -1,50 +1,30 @@
 import re
-
-class StorageMaths:
-    def __init__(self,capacity,denominator,decimals=2,format=None):
-        self.capacity = int(capacity)
-        self.denominator = denominator.upper()
-        self.decimals = decimals
-        self.format = format
-  
-    def setattrs(self):
-        for attr in self.bit_table.keys():
-            if isinstance(self.format,type):
-                setattr(self,attr,self.format(getattr(self,attr)))
-            elif callable(self.format):
-                setattr(self,attr,self.format(getattr(self,attr),attr))
-            elif self.format:
-                setattr(self,attr,getattr(self,self.format)(getattr(self,attr),attr))
-
-    def string(self,value,attr=None):
-        return f"{value}"
-
-    def word(self,value,attr=None):
-        return f"{value} {attr}"
-
     
-class StorageCapacity(StorageMaths):
+class StorageCapacity():
     '''
-    denominators and return attributes:\n
-    bits, bytes, KB, MB, GB, TB, PB, blks\n
-    format:\n
-    set basic type: int, float, str
-    int, float, string\n
-    OR pass function(value,attr)\n
-    OR call local function using string name\n
+    capacity\n
+    denominator [ 'bits' | 'bytes' | 'KB' | 'MB' | 'GB' | 'TB' | 'PB' | 'BLK' ]\n
+    decimals\n\n
+    e.g\n
+    >>> cap = StorageCapacity(300,'blk')\n
+    >>> vars(cap)\n
+    {'BITS': 1228800, 'BYTES': 153600, 'BLK': 300, 'KB': 150.0, 'MB': 0.15, 'GB': 0.0, 'TB': 0.0, 'PB': 0.0}\n
+    >>> cap.MB\n
+    0.15\n
     '''
-    def __init__(self,capacity,denominator,decimals=2,format=None):
-        super().__init__(capacity,denominator,decimals=decimals,format=format)
-        self.bit_table = {'BITS':1,'BYTES':8*(pow(1024,0)),'KB':8*(pow(1024,1)),'MB':8*(pow(1024,2)),'GB': 8*(pow(1024,3)),'TB': 8*(pow(1024,4)),'PB': 8*(pow(1024,5)),'BLK':8*(512)}
-        self.BITS = int(self.capacity * self.bit_table[self.denominator])
+    bit_table = {'BITS':1,'BYTES':8*(pow(1024,0)),'KB':8*(pow(1024,1)),'MB':8*(pow(1024,2)),'GB': 8*(pow(1024,3)),'TB': 8*(pow(1024,4)),'PB': 8*(pow(1024,5)),'BLK':8*(512)}
+
+    def __init__(self,capacity: int,denominator: str,decimals: int=2) -> object:
+        print()
+        self.BITS = int(int(capacity) * self.bit_table[denominator.upper()])
         self.BYTES = int(self.BITS / self.bit_table['BYTES'])
         self.BLK = int(self.BITS / self.bit_table['BLK'])
-        self.KB = round(self.BITS / self.bit_table['KB'],self.decimals)
-        self.MB = round(self.BITS / self.bit_table['MB'],self.decimals)
-        self.GB = round(self.BITS / self.bit_table['GB'],self.decimals)
-        self.TB = round(self.BITS / self.bit_table['TB'],self.decimals)
-        self.PB = round(self.BITS / self.bit_table['PB'],self.decimals)
-        self.setattrs()
+        self.KB = round(self.BITS / self.bit_table['KB'],decimals)
+        self.MB = round(self.BITS / self.bit_table['MB'],decimals)
+        self.GB = round(self.BITS / self.bit_table['GB'],decimals)
+        self.TB = round(self.BITS / self.bit_table['TB'],decimals)
+        self.PB = round(self.BITS / self.bit_table['PB'],decimals)
+
 
 class Ldevid():
     '''
