@@ -358,19 +358,19 @@ class Raidcomparser:
                 cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = datadict
                 cmdreturn.stats['luncount'] += 1 
         
-        def applyfilter(host_grp):
+        def applyfilter(row):
             for key, val in lun_filter.items():
-                if key not in host_grp:
+                if key not in row and not callable(val) :
                     return False
             for key, val in lun_filter.items():
                 if isinstance(val,str):
-                    if host_grp[key] != val:
+                    if row[key] != val:
                         return False
                 elif isinstance(val,list):
-                    if host_grp[key] not in val:
+                    if row[key] not in val:
                         return False
-#                elif callable(val):
-#                    return val(host_grp,key)
+                elif callable(val):
+                    return val(row)
                 else:
                     return False
             return True
@@ -389,22 +389,9 @@ class Raidcomparser:
             values.insert(0,host_grp_id)
 
             prefiltered_luns.append(dict(zip(cmdreturn.headers, values)))            
+        
         cmdreturn.data = list(filter(applyfilter,prefiltered_luns))
         createview(cmdreturn.data)
-        
-        def createview(data):
-            for datadict in data:
-                self.log.info(datadict)
-                port = datadict['PORT']
-                gid = datadict['GID']
-                lun = datadict['LUN']
-                cmdreturn.view[port] = cmdreturn.view.get(port,{})
-                cmdreturn.view[port]['_GIDS'] = cmdreturn.view[port].get('_GIDS',{})
-                cmdreturn.view[port]['_GIDS'][gid] = cmdreturn.view[port]['_GIDS'].get(gid,{'_LUNS':{}})
-                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = datadict
-                cmdreturn.stats['luncount'] += 1  
-#            for value,head in zip(values,cmdreturn.headers):
-#                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun][head] = value
 
         return cmdreturn
 

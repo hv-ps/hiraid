@@ -211,6 +211,10 @@ class Raidcom:
         luns = getlun(port="cl1-a-1")\n
         luns = getlun(port="cl1-a",host_grp_name="MyHostGroup")\n
         luns = getlun(port="cl1-a",gid=1)\n
+        luns = getlun(port="cl1-a-1",lun_filter={'LDEV':'12000'})\n
+        luns = getlun(port="cl1-a-1",lun_filter={'LDEV':['12001','12002']})\n
+        luns = getlun(port="cl1-e-1",lun_filter={'Anykey_when_val_is_callable':lambda a : int(a['LUN']) > 1})\n
+        luns = getlun(port="cl1-e-1",lun_filter={'Anykey_when_val_is_callable':lambda a : int(a['LDEV']) > 12000})\n
         \n
         Returns Cmdview():\n
         luns.data\n
