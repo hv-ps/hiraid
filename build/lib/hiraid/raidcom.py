@@ -106,6 +106,13 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
+    def getresourcebyname(self,view_keyname: str='_resource_groups_named', **kwargs) -> object:
+        cmd = f"{self.path}raidcom get resource -key opt -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getresourcebyname(cmdreturn)
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        return cmdreturn
+
     def raidqry(self, view_keyname: str='_raidqry', **kwargs) -> object:
         cmd = f"{self.path}raidqry -l -I{self.instance}"
         cmdreturn = self.execute(cmd,**kwargs)
@@ -213,17 +220,10 @@ class Raidcom:
         luns.stderr\n
         luns.stdout\n
         '''
-        if re.search(r'cl\w-\D+\d?-\d+',port,re.IGNORECASE):
-            if kwargs.get('gid') or kwargs.get('host_grp_name'): raise Exception(f"Fully qualified port {port} does not require gid or host_grp_name '{kwargs}'")
-            cmdparam = ''
-        else:
-            if kwargs.get('gid') is None and kwargs.get('host_grp_name') is None: raise Exception("Without a fully qualified port (cluster-port-gid) getlun requires additional gid or name")
-            if kwargs.get('gid') and kwargs.get('host_grp_name'): raise Exception(f"getlun gid and name are mutually exclusive, please supply one or the other: gid={kwargs.get('gid')}, name={kwargs.get('host_grp_name')}")
-            cmdparam = ("-"+str(kwargs.get('gid'))," "+str(kwargs.get('host_grp_name')))[kwargs.get('gid') is None]
-
+        cmdparam = self.cmdparam(port=port,**kwargs)
         cmd = f"{self.path}raidcom get lun -port {port}{cmdparam} -I{self.instance} -s {self.serial} -key opt"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getlun(cmdreturn)
+        self.parser.getlun(cmdreturn,**kwargs)
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
             self.updatestats.luncounters()
@@ -365,12 +365,31 @@ class Raidcom:
     commands
     '''
     def addldev(self,ldev_id: str,poolid: int,capacity: int, **kwargs) -> object:
-        self.resetcommandstatus()
+        '''
+        raidcom add ldev -ldev_id <Ldev#> -pool <ID#> -capacity <block_size>\n
+        examples:\n
+        ldev = Raidcom.gethbawwn(ldev_id=12025,poolid=0,capacity=2097152)\n
+        ldev = Raidcom.gethbawwn(ldev_id=12025,poolid=0,capacity="1g")\n
+        \n
+        Returns Cmdview():\n
+        ldev.data\n
+        ldev.view\n
+        ldev.cmd\n
+        ldev.returncode\n
+        ldev.stderr\n
+        ldev.stdout\n
+        '''
         cmd = f"{self.path}raidcom add ldev -ldev_id {ldev_id} -pool {poolid} -capacity {capacity} -I{self.instance} -s {self.serial}"
+        cmddef = { 'cmddef': 'addldev', 'args':{ 'ldev_id':ldev_id, 'poolid':poolid, 'capacity':capacity }}
         undocmd = [f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -pool {poolid} -capacity {capacity} -I{self.instance} -s {self.serial}"]
-        cmdreturn = self.execute(cmd,undocmd,**kwargs)
-        self.getcommandstatus()
+        undodef = [{ 'undodef': 'deleteldev', 'args':{ 'ldev_id':ldev_id }}]
+        cmdreturn = self.execute(cmd=cmd,undocmds=undocmd,undodefs=undodef,raidcom_asyncronous=True,**kwargs)
+        if not kwargs.get('noexec'):
+            getldev = self.getldev(ldev_id=ldev_id)
+            cmdreturn.data = getldev.data
+            cmdreturn.view = getldev.view
         return cmdreturn
+
 
     def extendldev(self, ldev_id: str, capacity: int, **kwargs) -> object:
         '''
@@ -378,44 +397,60 @@ class Raidcom:
         capacity = capacity in blk\n
         Where 'capacity' will add specified blks to current capacity 
         '''
-        self.resetcommandstatus()
+        #self.resetcommandstatus()
         cmd = f"{self.path}raidcom extend ldev -ldev_id {ldev_id} -capacity {capacity} -I{self.instance} -s {self.serial}"
-        cmdreturn = self.execute(cmd,**kwargs)
-        self.getcommandstatus()
+        cmdreturn = self.execute(cmd,raidcom_asyncronous=True,**kwargs)
+        #self.getcommandstatus()
         return cmdreturn
 
-    def modifyldevname(self,ldev_id: str,ldev_name: str, **kwargs) -> object:
-        self.resetcommandstatus()
-        cmd = f"{self.path}raidcom modify ldev -ldev_id {ldev_id} -ldev_name '{ldev_name}' -I{self.instance} -s {self.serial}"
-        cmdreturn = self.execute(cmd,**kwargs)
-        self.getcommandstatus()
-        return cmdreturn
+    def populateundo(self,undodef,undocmds,undodefs):
+        undocmds.insert(0,getattr(self,undodef['undodef'])(noexec=True,**undodef['args']).cmd)
+        undodefs.insert(0,undodef)
 
     def deleteldev_undo(self,ldev_id: str, **kwargs):
-        _ldev_data = self.getldev(ldev_id=ldev_id).view
-        _ldev = _ldev_data[next(iter(_ldev_data))]
+        print("deleteldev_undo")
+        ldev = self.getldev(ldev_id=ldev_id)
         undocmds = []
         undodefs = []
-        if len(_ldev.get('LDEV_NAMING',"")):
-            undocmds.append(f"{self.path}raidcom modify ldev -ldev_id {ldev_id} -ldev_name {_ldev['LDEV_NAMING']} -I{self.instance} -s {self.serial}")
-            undodefs.append({'undodef':'modifyldevname','args':{'ldev_id':ldev_id,'ldev_name':_ldev['LDEV_NAMING']}})
-        if _ldev['VOL_TYPE'] != "NOT DEFINED":
-            undocmds.append(f"{self.path}raidcom add ldev -ldev_id {ldev_id} -capacity {_ldev['VOL_Capacity(BLK)']} -pool {_ldev['B_POOLID']} -I{self.instance} -s {self.serial}")
-            undodefs.append({'undodef':'addldev','args':{'ldev_id':ldev_id,'capacity':_ldev['VOL_Capacity(BLK)'],'poolid':_ldev['B_POOLID']}})
-        return undocmds,undodefs
+        if len(ldev.data[0].get('LDEV_NAMING',"")):
+            self.populateundo({'undodef':'modifyldevname','args':{'ldev_id':ldev_id,'ldev_name':ldev.data[0]['LDEV_NAMING']}},undocmds,undodefs)
+        if ldev.data[0]['VOL_TYPE'] != "NOT DEFINED":
+            self.populateundo({'undodef':'addldev','args':{'ldev_id':ldev_id,'capacity':ldev.data[0]['VOL_Capacity(BLK)'],'poolid':ldev.data[0]['B_POOLID']}},undocmds,undodefs)
+        return undocmds,undodefs,ldev
             
     def deleteldev(self, ldev_id: str, **kwargs) -> object:
-        undocmds,undodefs = self.deleteldev_undo(ldev_id=ldev_id)
-        self.resetcommandstatus()
+        print("deleteldev")
+        undocmds,undodefs,ldev = self.deleteldev_undo(ldev_id=ldev_id)
+        
+        #self.resetcommandstatus()
         cmd = f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
-        cmdreturn = self.execute(cmd,undocmds,undodefs,**kwargs)
-        self.getcommandstatus()
+
+        cmdreturn = self.execute(cmd,undocmds,undodefs,raidcom_asyncronous=True,**kwargs)
+        cmdreturn.view = ldev.view
+        cmdreturn.data = ldev.data
+    
+        #self.getcommandstatus()
         return cmdreturn
 
     def addresource(self,resource_name: str,virtualSerialNumber: str=None,virtualModel: str=None, **kwargs) -> object:
-        cmd = f"{self.path}raidcom add resource -resource_name '{resource_name}' -virtual_type {virtualSerialNumber} {virtualModel} -I{self.instance} -s {self.serial}"
         undocmd = [f"{self.path}raidcom delete resource -resource_name '{resource_name}' -I{self.instance} -s {self.serial}"]
-        cmdreturn = self.execute(cmd,undocmd,**kwargs)
+        undodef = [{'undodef':'deleteresource','args':{'resource_name':resource_name}}]
+        cmd = f"{self.path}raidcom add resource -resource_name '{resource_name}' -virtual_type {virtualSerialNumber} {virtualModel} -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,undocmd,undodef,**kwargs)
+        return cmdreturn
+
+    def deleteresource_undo(self,resource_name: str,**kwargs):
+        undocmds = []
+        undodefs = []
+        resource_data = self.getresourcebyname()
+        rgrp = resource_data.view[resource_name]
+        self.populateundo({'undodef':'addresource','args':{'resource_name':rgrp['RS_GROUP'],'virtualSerialNumber':rgrp['V_Serial#'],'virtualModel':rgrp['V_ID']}},undocmds,undodefs)
+        return undocmds,undodefs
+    
+    def deleteresource(self,resource_name: str, **kwargs) -> object:
+        undocmds,undodefs = self.deleteresource_undo(resource_name=resource_name,**kwargs)
+        cmd = f"{self.path}raidcom delete resource -resource_name '{resource_name}' -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,undocmds,undodefs,**kwargs)
         return cmdreturn
 
     def addhostgrpresource(self,port: str,resource_name: str, host_grp_name='', **kwargs) -> object:
@@ -453,14 +488,17 @@ class Raidcom:
         cmd = f"{self.path}raidcom add host_grp -host_grp_name '{host_grp_name}' -port {port} -I{self.instance} -s {self.serial}"
         undocmd = [f"{self.path}raidcom delete host_grp -host_grp_name '{host_grp_name}' -port {port} -I{self.instance} -s {self.serial}"]
         cmdreturn = self.execute(cmd,undocmd,**kwargs)
+        if not kwargs.get('noexec'):
+            host_grp = self.gethostgrp_key_detail(port=port,host_grp_name=host_grp_name)
+            cmdreturn.data = host_grp.data
+            cmdreturn.view = host_grp.view
         return cmdreturn
+
+    
 
     def addhostgroup(self,port: str,hostgroupname: str, **kwargs) -> object:
         '''Deprecated in favour of gethostgrp'''
-        cmd = f"{self.path}raidcom add host_grp -host_grp_name '{hostgroupname}' -port {port} -I{self.instance} -s {self.serial}"
-        undocmd = [f"{self.path}raidcom delete host_grp -host_grp_name '{hostgroupname}' -port {port} -I{self.instance} -s {self.serial}"]
-        cmdreturn = self.execute(cmd,undocmd,**kwargs)
-        return cmdreturn        
+        return self.addhostgrp(port=port,host_grp_name=hostgroupname,**kwargs)
 
     def deletehostgrp_undo(self,port:str, **kwargs) -> object:
         undocmds = []
@@ -499,7 +537,7 @@ class Raidcom:
                 populateundo({'undodef':'addhbawwn','args':{'port':hbawwn['PORT'],'host_grp_name':host_grp['GROUP_NAME'],'hba_wwn':hbawwn['HWWN']}})
                 if hbawwn['NICK_NAME'] != "-":
                     populateundo({'undodef':'setwwnnickname','args':{'port':hbawwn['PORT'],'host_grp_name':host_grp['GROUP_NAME'],'hba_wwn':hbawwn['HWWN'],'wwn_nickname':hbawwn['NICK_NAME']}})
-                    
+
         return undocmds,undodefs
 
     def deletehostgrp(self,port: str, **kwargs) -> object:
@@ -530,39 +568,70 @@ class Raidcom:
         
     #def dismantlehostgrp(self,port: str, **kwargs) -> object:
 
-    def addldevauto(self,poolid: int,capacityblk: int,resource_id: int,start: int,end: int, **kwargs):
+    def addldevauto(self,poolid: int,capacity: int,start: int,end: int, **kwargs):
         ldev_range = '{}-{}'.format(start,end)
         self.resetcommandstatus()
-        cmd = f"{self.path}raidcom add ldev -ldev_id auto -request_id auto -ldev_range {ldev_range} -pool {poolid} -capacity {capacityblk} -I{self.instance} -s {self.serial}"
-        
+        cmd = f"{self.path}raidcom add ldev -ldev_id auto -request_id auto -ldev_range {ldev_range} -pool {poolid} -capacity {capacity} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         reqid = cmdreturn.stdout.rstrip().split(' : ')
         if not re.search(r'REQID',reqid[0]):
             raise Exception(f"Unable to obtain REQID from stdout {cmdreturn}.")
-        cmdreturn = self.getcommandstatus(request_id=reqid[1])
-        self.parser.getcommandstatus(cmdreturn)
-        requestid = list(cmdreturn.view.keys())[0]
-        
-        autoldevid = cmdreturn['views']['metaview']['data'][requestid]['ID']
-        autoldevid = cmdreturn.view[requestid]['ID']
-        
-        #cmdreturn['views']['autoldevid'] = autoldevid
-        #self.log.info('created ldevid {}'.format(autoldevid))
-        undocmd = [f"{self.path}raidcom delete ldev -ldev_id {autoldevid} -pool {poolid} -capacity {capacityblk} -I{self.instance} -s {self.serial}"]
-        #requestid = cmdreturn['views']['metaview']['data'].keys()[0] 
-        echo = f'echo "Executing: {undocmd[0]}"'
-        self.undocmds.insert(0,undocmd[0])
-        self.undocmds.insert(0,echo)
+        getcommandstatus = self.getcommandstatus(request_id=reqid[1])
+        self.parser.getcommandstatus(getcommandstatus)
+        auto_ldev_id = getcommandstatus.data[0]['ID']
+        undodef = {'undodef':'deleteldev','args':{'ldev_id':auto_ldev_id}}
+        undo = self.deleteldev(ldev_id=auto_ldev_id,noexec=True)
+        cmdreturn.view = undo.view
+        cmdreturn.data = undo.data
+        cmdreturn.undocmds.insert(0,undo.cmd)
+        cmdreturn.undodefs.insert(0,undodef)
+        self.undocmds.insert(0,cmdreturn.undocmds[0])
+        self.undocmds.insert(0,f'echo "Executing: {cmdreturn.undocmds[0]}"')
+        self.undodefs.insert(0,cmdreturn.undodefs[0])
         # Reset command status
         self.resetcommandstatus(reqid[1])
         return cmdreturn
 
-    def addlun(self, port: str, ldev_id: str, lun_id: int='', host_grp_name: str='', gid: int='', **kwargs) -> object:
-        cmd = f"{self.path}raidcom add lun -port {port} {host_grp_name} -ldev_id {ldev_id} -lun_id {lun_id} -I{self.instance} -s {self.serial}"
-        undocmd = [f"{self.path}raidcom delete lun -port {port} {host_grp_name} -ldev_id {ldev_id} -lun_id {lun_id} -I{self.instance} -s {self.serial}"]
-        cmdreturn = self.execute(cmd,undocmd,**kwargs)
+    #def addlun(self, port: str, ldev_id: str, lun_id: int='', host_grp_name: str='', gid: int='', **kwargs) -> object:
+
+    def addlun(self, port: str, ldev_id: str, **kwargs) -> object:
+
+
+        cmdparam = self.cmdparam(port=port, ldev_id=ldev_id, **kwargs)
+        if kwargs.get('lun_id'):
+            lun_id = kwargs['lun_id']
+            cmd = f"{self.path}raidcom add lun -port {port}{cmdparam} -ldev_id {ldev_id} -lun_id {kwargs['lun_id']} -I{self.instance} -s {self.serial}"
+            cmdreturn = self.execute(cmd=cmd,**kwargs)
+        else:
+            cmd = f"{self.path}raidcom add lun -port {port}{cmdparam} -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
+            cmdreturn = self.execute(cmd=cmd,**kwargs)
+            lun = re.match('^raidcom: LUN \d+\((0x[0-9-af]+)\) will be used for adding',cmdreturn.stdout,re.I)
+            if lun:
+                print(lun.group(1))
+                lun_id = int(lun.group(1),16)
+            else:
+                raise Exception(f"Unable to extract lun information while mapping ldev_id {ldev_id} to {port}{cmdparam}")
+            
+        cmdreturn.undocmd = [f"{self.path}raidcom delete lun -port {port}{cmdparam} -ldev_id {ldev_id} -lun_id {lun_id} -I{self.instance} -s {self.serial}"]
+        if not kwargs.get('noexec'):
+            getlun = self.getlun(port=f"{port}{cmdparam}",lun_filter={ 'LUN': str(lun_id) })
+        cmdreturn.data = getlun.data
+        cmdreturn.view = getlun.view
+
         return cmdreturn
+    #def gethbawwn(self,port,gid=None,name=None,view_keyname: str='_ports', update_view=True, **kwargs) -> object:
     
+    def XXXXcmdparam(self,**kwargs):
+        cmdparam = ""
+        if re.search(r'cl\w-\D+\d?-\d+',kwargs['port'],re.IGNORECASE):
+            if kwargs.get('gid') or kwargs.get('host_grp_name'): raise Exception(f"Fully qualified port {kwargs['port']} does not require gid or host_grp_name '{kwargs}'")
+        else:
+            if kwargs.get('gid') is None and kwargs.get('host_grp_name') is None: raise Exception("'gid' or 'host_grp_name' is required when port is not fully qualified (cluster-port-gid)")
+            if kwargs.get('gid') and kwargs.get('host_grp_name'): raise Exception(f"'gid' and 'host_grp_name' are mutually exclusive, please supply one or the other > 'gid': {kwargs.get('gid')}, 'host_grp_name': {kwargs.get('host_grp_name')}")
+            cmdparam = ("-"+str(kwargs.get('gid'))," "+str(kwargs.get('host_grp_name')))[kwargs.get('gid') is None]
+        return cmdparam
+
+
     def deletelun(self, port: str, ldev_id: str, lun_id: int='', host_grp_name: str='', gid: int='', **kwargs) -> object:
         cmd = f"{self.path}raidcom delete lun -port {port} {host_grp_name} -ldev_id {ldev_id} -lun_id {lun_id} -I{self.instance} -s {self.serial}"
         undocmd = [f"{self.path}raidcom add lun -port {port} {host_grp_name} -ldev_id {ldev_id} -lun_id {lun_id} -I{self.instance} -s {self.serial}"]
@@ -583,18 +652,18 @@ class Raidcom:
         return cmdreturn
 
     def modifyldevname(self,ldev_id: str,ldev_name: str, **kwargs) -> object:
-        self.resetcommandstatus()
+        #self.resetcommandstatus()
         cmd = f"{self.path}raidcom modify ldev -ldev_id {ldev_id} -ldev_name '{ldev_name}' -I{self.instance} -s {self.serial}"
-        cmdreturn = self.execute(cmd,**kwargs)
-        self.getcommandstatus()
+        cmdreturn = self.execute(cmd,raidcom_asyncronous=True,**kwargs)
+        #self.getcommandstatus()
         return cmdreturn
 
     def modifyldevcapacitysaving(self,ldev_id: str,capacity_saving: str, **kwargs) -> object:
-        self.resetcommandstatus()
+        #self.resetcommandstatus()
         cmd = f"{self.path}raidcom modify ldev -ldev_id '{ldev_id}' -capacity_saving {capacity_saving} -I{self.instance} -s {self.serial}"
         undocmd = [f"{self.path}raidcom modify ldev -ldev_id '{ldev_id}' -capacity_saving {capacity_saving} -I{self.instance} -s {self.serial}"]
-        cmdreturn = self.execute(cmd,undocmd,**kwargs)
-        self.getcommandstatus()
+        cmdreturn = self.execute(cmd,undocmd,raidcom_asyncronous=True,**kwargs)
+        #self.getcommandstatus()
         return cmdreturn
 
     def modifyhostgrp(self,port: str,host_mode: str, host_grp_name: str='', host_mode_opt: list=[], **kwargs) -> object:
@@ -825,12 +894,16 @@ class Raidcom:
         return cmdreturn
 
     def execute(self,cmd,undocmds=[],undodefs=[],expectedreturn=0,**kwargs) -> object:
-        self.log.info(f"Executing: {cmd}")
-        self.log.debug(f"Expecting return code {expectedreturn}")
+
+        
         cmdreturn = Cmdview(cmd=cmd)
         cmdreturn.expectedreturn = expectedreturn
         if kwargs.get('noexec'):
             return cmdreturn
+        if kwargs.get('raidcom_asyncronous'):
+            self.resetcommandstatus()
+        self.log.warning(f"Executing: {cmd}")
+        self.log.warning(f"Expecting return code {expectedreturn}")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
         cmdreturn.stdout, cmdreturn.stderr = proc.communicate()
         cmdreturn.returncode = proc.returncode
@@ -855,6 +928,9 @@ class Raidcom:
 
         if self.cmdoutput:
             self.log.info(f"stdout: {cmdreturn.stdout}")
+
+        if kwargs.get('raidcom_asyncronous'):
+            self.getcommandstatus()
 
         return cmdreturn
 

@@ -100,6 +100,7 @@ class Raidcomparser:
             lastfive.insert(0, re.sub(r'%s' % regex,'',line))
             rgid = lastfive[1]
             cmdreturn.view[rgid] = {}
+            cmdreturn.data.append(dict(zip(cmdreturn.headers, lastfive)))
             for item,head in zip(lastfive,cmdreturn.headers):
                 cmdreturn.view[rgid][head] = item
             cmdreturn.stats['resource_group_count'] += 1
@@ -107,6 +108,27 @@ class Raidcomparser:
         if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
+    def getresourcebyname(self, cmdreturn: object) -> dict:
+        '''
+        stdout as input from get resource command
+        '''
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'resource_group_count':0 }
+
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            lastfive = row[-5:]
+            regex = r'\s+{}\s+{}\s+{}\s+{}\s+{}$'.format(lastfive[0], lastfive[1], lastfive[2], lastfive[3], lastfive[4])
+            lastfive.insert(0, re.sub(r'%s' % regex,'',line))
+            rs_group = lastfive[0]
+            cmdreturn.view[rs_group] = {}
+            cmdreturn.data.append(dict(zip(cmdreturn.headers, lastfive)))
+            for item,head in zip(lastfive,cmdreturn.headers):
+                cmdreturn.view[rs_group][head] = item
+            cmdreturn.stats['resource_group_count'] += 1
+
+        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
+        return cmdreturn
 
     def getport(self,cmdreturn: object,view_keyname: str='_ports'):
         '''
@@ -203,6 +225,7 @@ class Raidcomparser:
                 ldevout[k] = v
 
         cmdreturn.view = { ldevout['LDEV']:ldevout }
+        cmdreturn.data = [ldevout]
         return cmdreturn
         
     def getldevlist(self,cmdreturn: object) -> object:
@@ -271,6 +294,8 @@ class Raidcomparser:
                 elif isinstance(val,list):
                     if host_grp[key] not in val:
                         return False
+#                elif callable(val):
+#                    return val(host_grp,key)
                 else:
                     return False
             return True
@@ -287,6 +312,7 @@ class Raidcomparser:
                 cmdreturn.stats[gid_key] += 1
 
         prefiltered_host_grps = []
+        cmdreturn.headers.insert(0,"HOST_GRP_ID")
         for line in cmdreturn.rawdata:
             hostgroupName = re.findall(r'"([^"]*)"', line)
             if hostgroupName:
@@ -303,8 +329,8 @@ class Raidcomparser:
                 #host_mode_options = sorted([int(host_mode) for host_mode in host_mode_options.split(':')])
                 host_mode_options = [str(hmo) for hmo in sorted([int(opt) for opt in host_mode_options.split(':')])]
 
-            values = (port,gid,rgid,nameSpace,serial,hostmode,host_mode_options,host_grp_id)
-            cmdreturn.headers.append("HOST_GRP_ID")
+            values = (host_grp_id,port,gid,rgid,nameSpace,serial,hostmode,host_mode_options)
+            
             prefiltered_host_grps.append(dict(zip(cmdreturn.headers, values)))
 
         filtered_host_grps = list(filter(filter_host_grps,prefiltered_host_grps))
@@ -315,38 +341,70 @@ class Raidcomparser:
         if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
-    def getlun(self,cmdreturn: object) -> object:
+    def getlun(self,cmdreturn: object,lun_filter: dict={}) -> object:
 
         self.initload(cmdreturn)
         cmdreturn.stats = { 'luncount':0 }
+        
+        def createview(data):
+            for datadict in data:
+                self.log.info(datadict)
+                port = datadict['PORT']
+                gid = datadict['GID']
+                lun = datadict['LUN']
+                cmdreturn.view[port] = cmdreturn.view.get(port,{})
+                cmdreturn.view[port]['_GIDS'] = cmdreturn.view[port].get('_GIDS',{})
+                cmdreturn.view[port]['_GIDS'][gid] = cmdreturn.view[port]['_GIDS'].get(gid,{'_LUNS':{}})
+                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = datadict
+                cmdreturn.stats['luncount'] += 1 
+        
+        def applyfilter(host_grp):
+            for key, val in lun_filter.items():
+                if key not in host_grp:
+                    return False
+            for key, val in lun_filter.items():
+                if isinstance(val,str):
+                    if host_grp[key] != val:
+                        return False
+                elif isinstance(val,list):
+                    if host_grp[key] not in val:
+                        return False
+#                elif callable(val):
+#                    return val(host_grp,key)
+                else:
+                    return False
+            return True
 
+        prefiltered_luns = []
+        cmdreturn.headers.insert(0,"HOST_GRP_ID")
         for line in cmdreturn.rawdata:
-            hmos = ""
-            hmolist = []
-            sline = line.strip()
-            hmoregex = r'(.*?)([\s\d{2,3}]+$)'
-            capture = re.search(hmoregex,sline)
-            try:
-                hmos = str(capture.group(2).strip())
-                sline = capture.group(1)
-                hmolist = hmos.split()
-            except:
-                pass
-            port,gid,hmd,lun,num,ldev,cm,serial,opkma = sline.split()
-            values = sline.split()
-            values.append(sorted(hmolist))
+            values = line.strip().split(maxsplit=9)
+            if len(values) > 9:
+                values[10] = sorted([int(hmo) for hmo in values[10].split()])
+            else:
+                values.append([])
             port = values[0] = re.sub(r'\d+$','', values[0])
-            host_grp_id = f"{port}-{gid}"
-            cmdreturn.headers.insert(0,"HOST_GRP_ID")
+            gid = values[1]
+            host_grp_id = f"{port}-{gid}"            
             values.insert(0,host_grp_id)
-            cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': {} })
-            cmdreturn.view[port]['_GIDS'][gid] = cmdreturn.view[port]['_GIDS'].get(gid,{'_LUNS':{}})
-            cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = {}
-            cmdreturn.stats['luncount'] += 1
-            cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
 
-            for value,head in zip(values,cmdreturn.headers):
-                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun][head] = value
+            prefiltered_luns.append(dict(zip(cmdreturn.headers, values)))            
+        cmdreturn.data = list(filter(applyfilter,prefiltered_luns))
+        createview(cmdreturn.data)
+        
+        def createview(data):
+            for datadict in data:
+                self.log.info(datadict)
+                port = datadict['PORT']
+                gid = datadict['GID']
+                lun = datadict['LUN']
+                cmdreturn.view[port] = cmdreturn.view.get(port,{})
+                cmdreturn.view[port]['_GIDS'] = cmdreturn.view[port].get('_GIDS',{})
+                cmdreturn.view[port]['_GIDS'][gid] = cmdreturn.view[port]['_GIDS'].get(gid,{'_LUNS':{}})
+                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = datadict
+                cmdreturn.stats['luncount'] += 1  
+#            for value,head in zip(values,cmdreturn.headers):
+#                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun][head] = value
 
         return cmdreturn
 
@@ -362,6 +420,7 @@ class Raidcomparser:
             #self.log.warning(f"Skipping ELUN hba_wwn header, cmd returns no GID and therefore won't index into this structure: {vars(cmdreturn)}")
             return cmdreturn
         
+        cmdreturn.headers.insert(0,"HOST_GRP_ID")
         for line in cmdreturn.rawdata:
             sline = line.strip()
             regex = r'\s(\w{16}\s{3,4}'+str(self.raidcom.serial)+r')(?:\s+)(.*$)'
@@ -376,7 +435,7 @@ class Raidcomparser:
             port = re.sub(r'\d+$','', port)
             host_grp_id = f"{port}-{gid}"
             values = (host_grp_id,port,gid,hostgroupName,wwn,serial,wwn_nickname)
-            cmdreturn.headers.insert(0,"HOST_GRP_ID")
+            
             cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
             cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
             cmdreturn.stats['hbawwncount'] += 1
@@ -499,6 +558,7 @@ class Raidcomparser:
             for line in cmdreturn.rawdata:                
                 values = (reqid,r,ssb1,ssb2,serial,id,description) = line.split(maxsplit=6)
                 cmdreturn.view[reqid] = cmdreturn.view.get(reqid,{})
+                cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
                 for value,head in zip(values,cmdreturn.headers):
                     cmdreturn.view[reqid][head] = value
 
@@ -507,6 +567,7 @@ class Raidcomparser:
             # 00de        -       -          0         358149     -\n
             for line in cmdreturn.rawdata:                
                 values = (handle,ssb1,ssb2,errcnt,serial,description) = line.split(maxsplit=5)
+                cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
                 for value,head in zip(values,cmdreturn.headers):
                     cmdreturn.view[head] = value
 
