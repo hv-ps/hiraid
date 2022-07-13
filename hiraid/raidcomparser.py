@@ -28,6 +28,8 @@ from typing import Callable
 from historutils.historutils import Storcapunits
 from .cmdview import Cmdview
 from .v_id import VId
+import copy
+
         
 class Raidcomparser:
     def __init__(self,raidcom,log):
@@ -158,31 +160,31 @@ class Raidcomparser:
         createview(cmdreturn)
         return cmdreturn
 
-    def getport(self,cmdreturn: object,view_keyname: str='_ports'):
+    def getport(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
         '''
         cmdreturn: getport cmdreturn object as input
         default_view_keyname: default _ports
         '''
-        # Create list and simultaneously filter out empties
-        # Drop numeric characters from back of port placed there based upon location in horcm
-        # Return dictionary with port as key
-        
         self.initload(cmdreturn)
         cmdreturn.stats = { 'portcount':0 }
 
-        for line in cmdreturn.rawdata:
-            sline = line.split()
-            if len(sline) != len(cmdreturn.headers): raise("header and data length mismatch")
-            sline[0] = re.sub(r'\d+$','',sline[0])
-            if sline[0] not in cmdreturn.view:
-                cmdreturn.view[sline[0]] = {}
-            for item,head in zip(sline,cmdreturn.headers):
-                cmdreturn.view[sline[0]][head] = item
-                # This won't work for multi use ports! The count will be incorrect - stats should be separated: getport_stats(cmdreturn)
-            cmdreturn.stats['portcount'] += 1
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                port = datadict['PORT']
+                if port not in cmdreturn.view:
+                    cmdreturn.view[port] = copy.deepcopy(datadict)
+                    cmdreturn.view[port]['ATTR'] = []
+                    cmdreturn.stats['portcount'] += 1
+                cmdreturn.view[port]['ATTR'].append(datadict['ATTR'])
 
-        self.updateview(self.raidcom.views,{view_keyname:cmdreturn.view})
-        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            row[0] = re.sub(r'\d+$','',row[0])
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
         return cmdreturn
 
     def splitportgid(self,hsd):
@@ -390,18 +392,37 @@ class Raidcomparser:
 
         return cmdreturn
 
-    def gethbawwn(self,cmdreturn: object) -> object:
+    def gethbawwn(self,cmdreturn: object, datafilter: dict={}) -> object:
 
         self.initload(cmdreturn)
         cmdreturn.stats = { 'hbawwncount':0 }
-        if not len(cmdreturn.rawdata):
-            return cmdreturn
+
         # Quick fix for when hba_wwn is requested from ELUN port
-        
-        if re.search(r'^PORT\s+WWN',cmdreturn.header):
-            #self.log.warning(f"Skipping ELUN hba_wwn header, cmd returns no GID and therefore won't index into this structure: {vars(cmdreturn)}")
+        if not len(cmdreturn.rawdata) or re.search(r'^PORT\s+WWN',cmdreturn.header):
             return cmdreturn
         
+        def createview(data):
+            for datadict in data:
+                #self.log.info(datadict)
+                port = datadict['PORT']
+                gid = datadict['GID']
+
+                #cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
+                #cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
+                #cmdreturn.stats['hbawwncount'] += 1
+
+                cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
+                cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = datadict
+                cmdreturn.stats['hbawwncount'] += 1
+#                for value,head in zip(values,cmdreturn.headers):
+#                    cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn][head] = value
+
+#                cmdreturn.view[port]['_GIDS'] = cmdreturn.view[port].get('_GIDS',{})
+#                cmdreturn.view[port]['_GIDS'][gid] = cmdreturn.view[port]['_GIDS'].get(gid,{'_LUNS':{}})
+#                cmdreturn.view[port]['_GIDS'][gid]['_LUNS'][lun] = datadict
+#                cmdreturn.stats['luncount'] += 1 
+        
+        prefiltered = []
         cmdreturn.headers.insert(0,"HOST_GRP_ID")
         for line in cmdreturn.rawdata:
             sline = line.strip()
@@ -418,14 +439,15 @@ class Raidcomparser:
             host_grp_id = f"{port}-{gid}"
             values = (host_grp_id,port,gid,hostgroupName,wwn,serial,wwn_nickname)
             
-            cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
-            cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
-            cmdreturn.stats['hbawwncount'] += 1
-            cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
+            #cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
+            #cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
+            #cmdreturn.stats['hbawwncount'] += 1
+            prefiltered.append(dict(zip(cmdreturn.headers, values)))
 
-            for value,head in zip(values,cmdreturn.headers):
-                cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn][head] = value
-
+        cmdreturn.data = list(filter(lambda l: self.applyfilter(l,datafilter),prefiltered))
+            #for value,head in zip(values,cmdreturn.headers):
+            #    cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn][head] = value
+        createview(cmdreturn.data)
         return cmdreturn
 
     def getportlogin(self,cmdreturn):

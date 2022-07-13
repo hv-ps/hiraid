@@ -28,6 +28,8 @@ from typing import Callable
 from historutils.historutils import Storcapunits
 from .cmdview import Cmdview
 from .v_id import VId
+import copy
+
         
 class Raidcomparser:
     def __init__(self,raidcom,log):
@@ -158,32 +160,45 @@ class Raidcomparser:
         createview(cmdreturn)
         return cmdreturn
 
-    def getport(self,cmdreturn: object,view_keyname: str='_ports'):
+    def getport(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
         '''
         cmdreturn: getport cmdreturn object as input
         default_view_keyname: default _ports
         '''
-        # Create list and simultaneously filter out empties
-        # Drop numeric characters from back of port placed there based upon location in horcm
-        # Return dictionary with port as key
+
         
         self.initload(cmdreturn)
         cmdreturn.stats = { 'portcount':0 }
 
-        for line in cmdreturn.rawdata:
-            sline = line.split()
-            if len(sline) != len(cmdreturn.headers): raise("header and data length mismatch")
-            sline[0] = re.sub(r'\d+$','',sline[0])
-            if sline[0] not in cmdreturn.view:
-                cmdreturn.view[sline[0]] = {}
-            for item,head in zip(sline,cmdreturn.headers):
-                cmdreturn.view[sline[0]][head] = item
-                # This won't work for multi use ports! The count will be incorrect - stats should be separated: getport_stats(cmdreturn)
-            cmdreturn.stats['portcount'] += 1
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                port = datadict['PORT']
+                if port not in cmdreturn.view:
+                    cmdreturn.view[port] = copy.deepcopy(datadict)
+                    cmdreturn.view[port]['ATTR'] = []
+                cmdreturn.view[port]['ATTR'].append(datadict['ATTR'])
 
-        self.updateview(self.raidcom.views,{view_keyname:cmdreturn.view})
-        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            row[0] = re.sub(r'\d+$','',row[0])
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
+#        self.altview(cmdreturn,altview)
         return cmdreturn
+
+ #           if sline[0] not in cmdreturn.view:
+ #               cmdreturn.view[sline[0]] = {}
+ #           for item,head in zip(sline,cmdreturn.headers):
+ #               cmdreturn.view[sline[0]][head] = item
+ #               # This won't work for multi use ports! The count will be incorrect - stats should be separated: getport_stats(cmdreturn)
+ #           cmdreturn.stats['portcount'] += 1
+
+        #self.updateview(self.raidcom.views,{view_keyname:cmdreturn.view})
+        #if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
+#        return cmdreturn
 
     def splitportgid(self,hsd):
         clport,gid = hsd.rsplit(maxsplit=1)

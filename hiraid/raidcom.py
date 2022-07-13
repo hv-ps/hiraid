@@ -146,7 +146,7 @@ class Raidcom:
             self.updatestats.ldevcounts()
         return cmdreturn
 
-    def getport(self,view_keyname: str='_ports', **kwargs) -> object:
+    def getport(self,view_keyname: str='_ports', update_view=True, **kwargs) -> object:
         '''
             Raidcom get port  
             -> object:
@@ -158,12 +158,15 @@ class Raidcom:
         '''
         cmd = f"{self.path}raidcom get port -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getport(cmdreturn)
-        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+        if update_view:
+            self.updateview(self.views,{view_keyname:cmdreturn.view})
+            self.updatestats.portcounters()
+
         #self.portcounters()
         #raidcomstats.portcounters(self)
         #self.raidcomstats.portcounters()
-        self.updatestats.portcounters()
+        
         return cmdreturn
 
     def gethostgrp(self,port: str, view_keyname: str='_ports', **kwargs) -> object:
