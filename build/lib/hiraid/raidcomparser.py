@@ -102,18 +102,27 @@ class Raidcomparser:
         cmdreturn.view = view
         return cmdreturn
 
-    def raidqry(self, cmdreturn: object):
+    def raidqry(self, cmdreturn: object,datafilter: dict={}):
         self.initload(cmdreturn)
+        
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                serial = datadict['Serial#']
+                cmdreturn.view[serial] = datadict
+            cmdreturn.stats['storages'] = len(cmdreturn.view)
+
+        prefilter = []
         for line in cmdreturn.rawdata:
             row = line.split()
-            cmdreturn.view[row[5]] = {}
-            for item,head in zip(row,cmdreturn.headers):
-                cmdreturn.view[row[5]][head] = item
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+        
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
         return cmdreturn
 
    
 
-    def getresource(self, cmdreturn: object, resource_group_filter: dict={}, altview: Callable=None, **kwargs ) -> dict:
+    def getresource(self, cmdreturn: object, datafilter: dict={}, altview: Callable=None, **kwargs ) -> dict:
         '''
         stdout as input from get resource command
         '''
@@ -132,7 +141,7 @@ class Raidcomparser:
             row = line.rsplit(maxsplit=5)
             prefilter.append(dict(zip(cmdreturn.headers, row)))
 
-        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,resource_group_filter),prefilter))
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
         createview(cmdreturn)
         self.altview(cmdreturn,altview)
         return cmdreturn
@@ -518,12 +527,12 @@ class Raidcomparser:
         createview(cmdreturn.data)
         return cmdreturn
 
-    def getpool_key_fmc(self,cmdreturn) -> object:
-        self.getpool_key_None(cmdreturn)
+    def getpool_key_fmc(self,cmdreturn,datafilter={}) -> object:
+        self.getpool_key_None(cmdreturn,datafilter={})
         return cmdreturn
 
-    def getpool_key_saving(self,cmdreturn) -> object:
-        self.getpool_key_None(cmdreturn)
+    def getpool_key_saving(self,cmdreturn,datafilter={}) -> object:
+        self.getpool_key_None(cmdreturn,datafilter={})
         return cmdreturn
     
     def getpool_key_basic(self,cmdreturn,datafilter={}) -> dict:
@@ -546,8 +555,8 @@ class Raidcomparser:
         createview(cmdreturn.data)
         return cmdreturn
 
-    def getpool_key_powersave(self,cmdreturn) -> object:
-        self.getpool_key_None(cmdreturn)
+    def getpool_key_powersave(self,cmdreturn,datafilter={}) -> object:
+        self.getpool_key_None(cmdreturn,datafilter={})
         return cmdreturn
 
     def getpool_key_total_saving(self,cmdreturn,datafilter={}) -> object:

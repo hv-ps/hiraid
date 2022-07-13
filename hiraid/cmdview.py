@@ -1,14 +1,4 @@
 
-class XCmdview():
-    def __init__(self,cmd,returncode,stdout,stderr):
-        self.returncode = returncode
-        self.stdout = stdout
-        self.stderr = stderr
-        self.view = {}
-        self.data = []
-        self.cmd = ""
-        self.undocmds = []
-        self.undodefs = []
 
 class Cmdview():
     def __init__(self,cmd):
@@ -23,6 +13,7 @@ class Cmdview():
         self.data = []
         self.undocmds = []
         self.undodefs = []
+        self.stats = {}
 
 class CmdviewConcurrent():
     def __init__(self,returncode=[],stdout=[],stderr=[]):
@@ -34,4 +25,5 @@ class CmdviewConcurrent():
         self.cmds = []
         self.undocmds = []
         self.undodefs = []
+        self.stats = {}
 

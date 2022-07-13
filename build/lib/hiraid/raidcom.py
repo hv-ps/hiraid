@@ -101,21 +101,36 @@ class Raidcom:
     def getresource(self, view_keyname: str='_resource_groups', **kwargs) -> object:
         cmd = f"{self.path}raidcom get resource -key opt -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getresource(cmdreturn,**kwargs)
+        self.parser.getresource(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
     def getresourcebyname(self,view_keyname: str='_resource_groups_named', **kwargs) -> object:
         cmd = f"{self.path}raidcom get resource -key opt -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getresourcebyname(cmdreturn)
+        self.parser.getresourcebyname(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
     def raidqry(self, view_keyname: str='_raidqry', **kwargs) -> object:
+        '''
+        raidqry\n
+        examples:\n
+        rq = raidqry()\n
+        rq = raidqry(datafilter={'Serial#':'350147'})\n
+        rq = raidqry(datafilter={'Anykey_when_val_is_callable':lambda a : int(a['Cache(MB)']) > 50000})\n\n
+        Returns Cmdview():\n
+        rq.data\n
+        rq.view\n
+        rq.cmd\n
+        rq.returncode\n
+        rq.stderr\n
+        rq.stdout\n
+        rq.stats\n
+        '''
         cmd = f"{self.path}raidqry -l -I{self.instance}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.raidqry(cmdreturn)
+        self.parser.raidqry(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
@@ -148,13 +163,20 @@ class Raidcom:
 
     def getport(self,view_keyname: str='_ports', update_view=True, **kwargs) -> object:
         '''
-            Raidcom get port  
-            -> object:
-            getport.stats: dict
-            getport.data: list
-            getport.header: str
-            getport.headers: list
-            getport.view: dict
+        raidcom get port\n
+        examples:\n
+        ports = getport()\n
+        ports = getport(datafilter={'PORT':'CL1-A'})\n
+        ports = getport(datafilter={'TYPE':'FIBRE'})\n
+        ports = getport(datafilter={'Anykey_when_val_is_callable':lambda a : a['TYPE'] == 'FIBRE' and 'TAR' in a['ATTR']})\n\n
+        Returns Cmdview():\n
+        ports.data\n
+        ports.view\n
+        ports.cmd\n
+        ports.returncode\n
+        ports.stderr\n
+        ports.stdout\n
+        ports.stats\n
         '''
         cmd = f"{self.path}raidcom get port -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
