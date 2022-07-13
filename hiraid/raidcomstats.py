@@ -1,4 +1,5 @@
-from .storage_utils import StorageCapacity
+#from .storage_utils import StorageCapacity
+from historutils.historutils import Storcapunits
 
 class Raidcomstats():
     def __init__(self,raidcom,log):
@@ -25,8 +26,8 @@ class Raidcomstats():
             for ldevid in ldev_view:
                 stats_root['VOL_Capacity(BLK)'] += int(ldev_view[ldevid].get('VOL_Capacity(BLK)',0))
                 stats_root['Used_Block(BLK)'] += int(ldev_view[ldevid].get('Used_Block(BLK)',0))
-            vol_capacity = StorageCapacity(stats_root['VOL_Capacity(BLK)'],'blk')
-            used_capacity = StorageCapacity(stats_root['Used_Block(BLK)'],'blk')
+            vol_capacity = Storcapunits(stats_root['VOL_Capacity(BLK)'],'blk')
+            used_capacity = Storcapunits(stats_root['Used_Block(BLK)'],'blk')
             for denom in ['MB','GB','TB','PB']:
                 stats_root[f'VOL_Capacity({denom})'] = getattr(vol_capacity,denom)
                 stats_root[f'Used_Block({denom})'] = getattr(used_capacity,denom)

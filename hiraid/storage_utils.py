@@ -15,7 +15,6 @@ class StorageCapacity():
     bit_table = {'BITS':1,'BYTES':8*(pow(1024,0)),'KB':8*(pow(1024,1)),'MB':8*(pow(1024,2)),'GB': 8*(pow(1024,3)),'TB': 8*(pow(1024,4)),'PB': 8*(pow(1024,5)),'BLK':8*(512)}
 
     def __init__(self,capacity: int,denominator: str,decimals: int=2) -> object:
-        print()
         self.BITS = int(int(capacity) * self.bit_table[denominator.upper()])
         self.BYTES = int(self.BITS / self.bit_table['BYTES'])
         self.BLK = int(self.BITS / self.bit_table['BLK'])

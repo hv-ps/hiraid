@@ -19,6 +19,7 @@ class Cmdview():
         self.stdout = None
         self.stderr = None
         self.view = {}
+        self.altview = {}
         self.data = []
         self.undocmds = []
         self.undodefs = []
@@ -31,4 +32,6 @@ class CmdviewConcurrent():
         self.view = {}
         self.data = []
         self.cmds = []
+        self.undocmds = []
+        self.undodefs = []
 

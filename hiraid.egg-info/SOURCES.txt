@@ -3,7 +3,6 @@ README.md
 setup.py
 hiraid/__init__.py
 hiraid/cmdview.py
-hiraid/radmin.py
 hiraid/raidcom.py
 hiraid/raidcomparser.py
 hiraid/raidcomstats.py

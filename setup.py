@@ -6,7 +6,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='hiraid',
-    version='1.0.5',
+    version='1.0.6',
     description='Hitachi raidcom wrapper',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -16,6 +16,5 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         "historutils"
-        ],
-    #entry_points = { 'console_scripts':['radmin = hiraid.radmin:main'] }
+        ]
 )
