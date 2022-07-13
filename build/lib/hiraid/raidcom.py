@@ -216,10 +216,10 @@ class Raidcom:
         luns = getlun(port="cl1-a-1")\n
         luns = getlun(port="cl1-a",host_grp_name="MyHostGroup")\n
         luns = getlun(port="cl1-a",gid=1)\n
-        luns = getlun(port="cl1-a-1",lun_filter={'LDEV':'12000'})\n
-        luns = getlun(port="cl1-a-1",lun_filter={'LDEV':['12001','12002']})\n
-        luns = getlun(port="cl1-e-1",lun_filter={'Anykey_when_val_is_callable':lambda a : int(a['LUN']) > 1})\n
-        luns = getlun(port="cl1-e-1",lun_filter={'Anykey_when_val_is_callable':lambda a : int(a['LDEV']) > 12000})\n
+        luns = getlun(port="cl1-a-1",datafilter={'LDEV':'12000'})\n
+        luns = getlun(port="cl1-a-1",datafilter={'LDEV':['12001','12002']})\n
+        luns = getlun(port="cl1-e-1",datafilter={'Anykey_when_val_is_callable':lambda a : int(a['LUN']) > 1})\n
+        luns = getlun(port="cl1-e-1",datafilter={'Anykey_when_val_is_callable':lambda a : int(a['LDEV']) > 12000})\n
         \n
         Returns Cmdview():\n
         luns.data\n
@@ -232,7 +232,7 @@ class Raidcom:
         cmdparam = self.cmdparam(port=port,**kwargs)
         cmd = f"{self.path}raidcom get lun -port {port}{cmdparam} -I{self.instance} -s {self.serial} -key opt"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getlun(cmdreturn,lun_filter=kwargs.get('lun_filter',{}))
+        self.parser.getlun(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
             self.updatestats.luncounters()
@@ -269,7 +269,7 @@ class Raidcom:
         cmdparam = self.cmdparam(port=port,**kwargs)
         cmd = f"{self.path}raidcom get hba_wwn -port {port}{cmdparam} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.gethbawwn(cmdreturn)
+        self.parser.gethbawwn(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
             self.updatestats.hbawwncounters()
@@ -284,7 +284,7 @@ class Raidcom:
         '''
         cmd = f"{self.path}raidcom get port -port {port} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getportlogin(cmdreturn)
+        self.parser.getportlogin(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
@@ -297,7 +297,7 @@ class Raidcom:
         keyswitch = ("",f"-key {key}")[key is not None]
         cmd = f"{self.path}raidcom get pool -I{self.instance} -s {self.serial} {keyswitch}"
         cmdreturn = self.execute(cmd,**kwargs)
-        getattr(self.parser,f"getpool_key_{key}")(cmdreturn)
+        getattr(self.parser,f"getpool_key_{key}")(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updatestats.poolcounters()
         return cmdreturn
@@ -305,7 +305,7 @@ class Raidcom:
     def getcopygrp(self, view_keyname: str='_copygrps', **kwargs) -> object:
         cmd = f"{self.path}raidcom get copy_grp -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getcopygrp(cmdreturn)
+        self.parser.getcopygrp(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
