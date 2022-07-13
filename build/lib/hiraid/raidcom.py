@@ -260,7 +260,6 @@ class Raidcom:
             self.updatestats.luncounters()
         return cmdreturn
 
-    #def gethbawwn(self,port,gid=None,name=None,view_keyname: str='_ports', update_view=True, **kwargs) -> object:
     def cmdparam(self,**kwargs):
         cmdparam = ""
         if re.search(r'cl\w-\D+\d?-\d+',kwargs['port'],re.IGNORECASE):
@@ -399,8 +398,8 @@ class Raidcom:
         '''
         raidcom add ldev -ldev_id <Ldev#> -pool <ID#> -capacity <block_size>\n
         examples:\n
-        ldev = Raidcom.gethbawwn(ldev_id=12025,poolid=0,capacity=2097152)\n
-        ldev = Raidcom.gethbawwn(ldev_id=12025,poolid=0,capacity="1g")\n
+        ldev = Raidcom.addldev(ldev_id=12025,poolid=0,capacity=2097152)\n
+        ldev = Raidcom.addldev(ldev_id=12025,poolid=0,capacity="1g")\n
         \n
         Returns Cmdview():\n
         ldev.data\n
