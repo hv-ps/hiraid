@@ -73,9 +73,6 @@ class Raidcom:
         cmdreturn = self.execute(cmd,**kwargs)
         return cmdreturn
 
-    def verbose(self,on=True):
-        self.cmdoutput = on
-    
     def lockresource(self, **kwargs) -> object:
         cmd = f"{self.path}raidcom lock resource -I{self.instance} -s {self.serial}"
         undocmd = ['{}raidcom unlock resource -I{} -s {}'.format(self.path,self.instance,self.serial)]
@@ -92,24 +89,6 @@ class Raidcom:
         cmdreturn = self.parser.identify()
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.log.info(f"Storage identity: {cmdreturn.view}")
-        return cmdreturn
-
-    def limitations(self):
-        for limitation in Storagecapabilities.default_limitations:
-            setattr(self,limitation,Storagecapabilities.limitations.get(self.v_id,{}).get(limitation,Storagecapabilities.default_limitations[limitation]))
-
-    def getresource(self, view_keyname: str='_resource_groups', **kwargs) -> object:
-        cmd = f"{self.path}raidcom get resource -key opt -I{self.instance} -s {self.serial}"
-        cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getresource(cmdreturn,datafilter=kwargs.get('datafilter',{}))
-        self.updateview(self.views,{view_keyname:cmdreturn.view})
-        return cmdreturn
-
-    def getresourcebyname(self,view_keyname: str='_resource_groups_named', **kwargs) -> object:
-        cmd = f"{self.path}raidcom get resource -key opt -I{self.instance} -s {self.serial}"
-        cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getresourcebyname(cmdreturn,datafilter=kwargs.get('datafilter',{}))
-        self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
     def raidqry(self, view_keyname: str='_raidqry', **kwargs) -> object:
@@ -134,6 +113,25 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
+
+    def limitations(self):
+        for limitation in Storagecapabilities.default_limitations:
+            setattr(self,limitation,Storagecapabilities.limitations.get(self.v_id,{}).get(limitation,Storagecapabilities.default_limitations[limitation]))
+
+    def getresource(self, view_keyname: str='_resource_groups', **kwargs) -> object:
+        cmd = f"{self.path}raidcom get resource -key opt -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getresource(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        return cmdreturn
+
+    def getresourcebyname(self,view_keyname: str='_resource_groups_named', **kwargs) -> object:
+        cmd = f"{self.path}raidcom get resource -key opt -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getresourcebyname(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        return cmdreturn
+
     def getldev(self,ldev_id: str, view_keyname: str='_ldevs', update_view=True, **kwargs) -> object:
         '''
         e.g.
@@ -147,15 +145,27 @@ class Raidcom:
             self.updatestats.ldevcounts()
         return cmdreturn
 
-    def getldevlist(self, ldevtype: str, view_keyname: str='_ldevlist', update_view=True, **kwargs) -> object:
+    def getldevlist(self, ldevtype: str, view_keyname: str='_ldevlist', update_view=True, key='', **kwargs) -> object:
         '''
         ldevtype = dp_volume | external_volume | journal | pool | parity_grp | mp_blade | defined | undefined | mapped | mapped_nvme | unmapped
         * Some of these options require additional parameters, for example 'pool' requires pool_id = $poolid
+        options = { 'key':'front_end' }
+        ldevs = getldevlist(ldevtype="mapped",datafilter={'Anykey_when_val_is_callable':lambda a : float(a['Used_Block(GB)']) > 10})\n
         '''
-        options = " ".join([f"-{k} {v}" for k,v in kwargs.items()])
-        cmd = f"{self.path}raidcom get ldev -ldev_list {ldevtype} {options} -I{self.instance} -s {self.serial}"
+        #options = " ".join([f"-{k} {v}" for k,v in kwargs.get('options',{}).items()])
+        key_opt,attr = '',''
+
+        if len(key):
+            key_opt = f"-key {key}"
+            attr = f"_{key}"
+
+        cmd = f"{self.path}raidcom get ldev -ldev_list {ldevtype} {key_opt} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getldevlist(cmdreturn)
+        #self.parser.getldevlist(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+
+        getattr(self.parser,f'getldevlist{attr}')(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+        #self.parser.getattr() getldevlist(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+
         if update_view:
             self.updateview(self.views,{view_keyname:{ldevtype:cmdreturn.view}})
             self.updatestats.ldevcounts()
@@ -191,11 +201,30 @@ class Raidcom:
         
         return cmdreturn
 
-    def gethostgrp(self,port: str, view_keyname: str='_ports', **kwargs) -> object:
+    def gethostgrp(self,port: str, view_keyname: str='_ports', update_view: bool=True, **kwargs) -> object:
         '''
         raidcom get host_grp\n
         Better to use gethostgrp_key_detail rather than this function.\n
         You will instead obtain unused host groups and more importantly the resource group id.\n
+        '''
+        '''
+        raidcom host_grp -key detail\n
+        examples:\n
+        host_grps = gethostgrp(port="cl1-a")\n
+        host_grps = gethostgrp(port="cl1-a-140")\n
+        host_grps = gethostgrp(port="cl1-a",host_grp_name="MyHostGroup")\n
+        host_grps = gethostgrp(port="cl1-a",datafilter={'HMD':'VMWARE_EX'})\n
+        host_grps = gethostgrp(port="cl1-a",datafilter={'GROUP_NAME':'MyGostGroup})\n
+        host_grps = gethostgrp(port="cl1-a",datafilter={'Anykey_when_val_is_callable':lambda a : 'TEST' in a['GROUP_NAME'] })\n
+        \n
+        Returns Cmdview():\n
+        host_grps.data\n
+        host_grps.view\n
+        host_grps.cmd\n
+        host_grps.returncode\n
+        host_grps.stderr\n
+        host_grps.stdout\n
+        host_grps.stats\n
         '''
         cmd = f"{self.path}raidcom get host_grp -port {port} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
@@ -203,7 +232,27 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
-    def gethostgrp_key_detail(self,port: str, view_keyname: str='_ports', update_view=True, **kwargs) -> object:
+    def gethostgrp_key_detail(self,port: str, view_keyname: str='_ports', update_view: bool=True, **kwargs) -> object:
+        '''
+        raidcom host_grp -key detail\n
+        examples:\n
+        host_grps = gethostgrp_key_detail(port="cl1-a")\n
+        host_grps = gethostgrp_key_detail(port="cl1-a-140")\n
+        host_grps = gethostgrp_key_detail(port="cl1-a",host_grp_name="MyHostGroup")\n
+        host_grps = gethostgrp_key_detail(port="cl1-a",datafilter={'HMD':'VMWARE_EX'})\n
+        host_grps = gethostgrp_key_detail(port="cl1-a",datafilter={'GROUP_NAME':'MyGostGroup})\n
+        host_grps = gethostgrp_key_detail(port="cl1-a",datafilter={'Anykey_when_val_is_callable':lambda a : 'TEST' in a['GROUP_NAME'] })\n
+        \n
+        Returns Cmdview():\n
+        host_grps.data\n
+        host_grps.view\n
+        host_grps.cmd\n
+        host_grps.returncode\n
+        host_grps.stderr\n
+        host_grps.stdout\n
+        host_grps.stats\n
+        '''
+        
         '''
         raidcom get host_grp -key detail\n
         Differs slightly from raidcom\n
@@ -223,7 +272,7 @@ class Raidcom:
             
         cmd = f"{self.path}raidcom get host_grp -port {port} -key detail {resource_param} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.gethostgrp_key_detail(cmdreturn,host_grp_filter=kwargs.get('host_grp_filter',{}))
+        self.parser.gethostgrp_key_detail(cmdreturn,datafilter=kwargs.get('datafilter',{}))
 
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
@@ -409,11 +458,24 @@ class Raidcom:
         ldev.stderr\n
         ldev.stdout\n
         '''
-        
-        cmd = f"{self.path}raidcom add ldev -ldev_id {ldev_id} -pool {poolid} -capacity {capacity} -request_id auto -I{self.instance} -s {self.serial}"
-        cmddef = { 'cmddef': 'addldev', 'args':{ 'ldev_id':ldev_id, 'poolid':poolid, 'capacity':capacity }}
-        undocmd = [f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -pool {poolid} -capacity {capacity} -I{self.instance} -s {self.serial}"]
-        undodef = [{ 'undodef': 'deleteldev', 'args':{ 'ldev_id':ldev_id }}]
+        cmdparam, ucmdparam, cmddict, ucmddict = '','',{},{}
+        options = { 'capacity_saving': ['compression','deduplication_compression'], 'compression_acceleration':['enable','disable'], 'capacity_saving_mode':['inline','postprocess']}
+
+        for arg in kwargs:
+            if arg in options:
+                if kwargs[arg] not in options[arg]:
+                    raise Exception(f"Optional command argument {arg} has incorrect value {kwargs[arg]}, possible options are {options[arg]}")
+                cmdparam = f"{cmdparam} -{arg} {kwargs[arg]} "
+                cmddict[arg] = kwargs[arg]
+            if arg == "capacity_saving" and kwargs[arg] != "disable":
+                ucmdparam = f"-operation initialize_capacity_saving"
+                ucmddict['operation'] = 'initialize_capacity_saving'
+
+        cmd = f"{self.path}raidcom add ldev -ldev_id auto -ldev_range {ldev_id}-{ldev_id} -pool {poolid} -capacity {capacity} {cmdparam} -request_id auto -I{self.instance} -s {self.serial}"
+        cmddef = { 'cmddef': 'addldev', 'args':{ 'ldev_id':ldev_id, 'poolid':poolid, 'capacity':capacity }.update(cmddict)}
+        undocmd = [f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -pool {poolid} -capacity {capacity} {ucmdparam} -I{self.instance} -s {self.serial}"]
+        undodef = [{ 'undodef': 'deleteldev', 'args':{ 'ldev_id':ldev_id }.update(ucmddict)}]
+
         cmdreturn = self.execute(cmd=cmd,undocmds=undocmd,undodefs=undodef,raidcom_asyncronous=False,**kwargs)
         reqid = cmdreturn.stdout.rstrip().split(' : ')
         
@@ -424,7 +486,7 @@ class Raidcom:
         except Exception as e:
             raise Exception(f"Failed to create ldev {ldev_id}, request_id {reqid[1]} error {e}")
 
-        self.resetcommandstatus(request_id=reqid[1])
+        #self.resetcommandstatus(request_id=reqid[1])
 
         if not kwargs.get('noexec') and return_ldev:
             getldev = self.getldev(ldev_id=ldev_id)
@@ -547,7 +609,7 @@ class Raidcom:
         return cmdreturn
 
     def addhostgroup(self,port: str,hostgroupname: str, **kwargs) -> object:
-        '''Deprecated in favour of gethostgrp'''
+        '''Deprecated in favour of addhostgrp'''
         return self.addhostgrp(port=port,host_grp_name=hostgroupname,**kwargs)
 
     def deletehostgrp_undo(self,port:str, **kwargs) -> object:
@@ -870,9 +932,11 @@ class Raidcom:
     '''
 
     def concurrent_gethostgrps(self,ports: list=[], max_workers: int=30, view_keyname: str='_ports', **kwargs) -> object:
-        ''' e.g. \n
-        ports=['cl1-a','cl2-a'] \n
-        hostgrp_filter=['cl1-a-3','cl2-a-3']
+        '''
+        host_grps = concurrent_gethostgrps(ports=['cl1-a','cl2-a'])\n
+        host_grps = concurrent_gethostgrps(ports=['cl1-a','cl2-a'],datafilter={'HMD':'VMWARE_EX'})\n
+        host_grps = concurrent_gethostgrps(port=['cl1-a','cl2-a'],datafilter={'GROUP_NAME':'MyGostGroup})\n
+        host_grps = gethostgrp(port=['cl1-a','cl2-a'],datafilter={'Anykey_when_val_is_callable':lambda a : 'TEST' in a['GROUP_NAME'] })\n
         '''
         cmdreturn = CmdviewConcurrent()
         for port in ports: self.checkport(port)
@@ -1151,4 +1215,7 @@ class Raidcom:
         cmd = '{}pairresync -g {} -I{} {}'.format(self.path,group,inst,opts)
         cmdreturn = self.execute(cmd)
         return cmdreturn
+
+    def verbose(self,on=True):
+        self.cmdoutput = on
     '''

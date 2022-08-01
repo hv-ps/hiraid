@@ -146,7 +146,7 @@ class Raidcomparser:
         self.altview(cmdreturn,altview)
         return cmdreturn
 
-    def getresourcebyname(self, cmdreturn: object, **kwargs) -> dict:
+    def getresourcebyname(self, cmdreturn: object, datafilter: dict={}, **kwargs) -> dict:
         '''
         stdout as input from get resource command
         '''
@@ -165,7 +165,7 @@ class Raidcomparser:
             row = line.rsplit(maxsplit=5)
             prefilter.append(dict(zip(cmdreturn.headers, row)))
 
-        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,kwargs.get('resource_group_filter')),prefilter))
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
         createview(cmdreturn)
         return cmdreturn
 
@@ -267,13 +267,38 @@ class Raidcomparser:
         cmdreturn.data = [ldevout]
         return cmdreturn
         
-    def getldevlist(self,cmdreturn: object) -> object:
+    def getldevlist(self,cmdreturn: object, datafilter: dict={}, **kwargs) -> object:
+        
+
+        def createview(cmdreturn):
+            cmdreturn.stats = { 'ldevcount':0 }
+            for datadict in cmdreturn.data:
+                self.log.info(datadict)
+                ldev_id = datadict['LDEV']
+                cmdreturn.view[ldev_id] = datadict
+                cmdreturn.stats['ldevcount'] += 1
+
+        prefilter = []
+        listofldevs = list(filter(None,cmdreturn.stdout.split('\n\n')))
+        for ldev in listofldevs:
+            ldevobj = type('obj', (object,), {'stdout' : ldev, 'view': {}})
+            parsedldev = self.getldev(ldevobj)
+            #self.updateview(cmdreturn.view,parsedldev.view)
+            #cmdreturn.data.extend(parsedldev.data)
+            prefilter.extend(parsedldev.data)
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
+        return cmdreturn
+
+    def getldevlist_front_end(self,cmdreturn: object, datafilter: dict={}, **kwargs) -> object:
 
         listofldevs = list(filter(None,cmdreturn.stdout.split('\n\n')))
         for ldev in listofldevs:
             ldevobj = type('obj', (object,), {'stdout' : ldev, 'view': {}})
             parsedldev = self.getldev(ldevobj)
             self.updateview(cmdreturn.view,parsedldev.view)
+            cmdreturn.data.extend(parsedldev.data)
         return cmdreturn
 
     def gethostgrp(self,cmdreturn: object) -> object:
@@ -311,7 +336,7 @@ class Raidcomparser:
         if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
-    def gethostgrp_key_detail(self,cmdreturn: object, host_grp_filter: dict={}) -> object:
+    def gethostgrp_key_detail(self,cmdreturn: object, datafilter: dict={}) -> object:
 
         '''
         host_grp_filter = { 'KEY': 'VALUE' | ['VALUE1','VALUE2'], 'KEY2': 'VALUE' | ['VALUE1','VALUE2'] }\n
@@ -355,7 +380,7 @@ class Raidcomparser:
             
             prefiltered_host_grps.append(dict(zip(cmdreturn.headers, values)))
 
-        filtered_host_grps = list(filter(lambda l: self.applyfilter(l,host_grp_filter),prefiltered_host_grps))
+        filtered_host_grps = list(filter(lambda l: self.applyfilter(l,datafilter),prefiltered_host_grps))
         #filtered_host_grps = list(filter(filter_host_grps,prefiltered_host_grps))
         used_host_grps = list(filter(lambda x: (x['GROUP_NAME'] != '-'),filtered_host_grps))
         unused_host_grps = list(filter(lambda x: (x['GROUP_NAME'] == '-'),filtered_host_grps))
