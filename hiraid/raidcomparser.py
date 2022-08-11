@@ -1,6 +1,6 @@
 #!/usr/bin/python3.6
 # -----------------------------------------------------------------------------------------------------------------------------------
-# Version v1.1.01
+# Version v1.1.02
 # -----------------------------------------------------------------------------------------------------------------------------------
 #
 # License Terms
@@ -19,6 +19,8 @@
 # 14/01/2020    v1.1.00     Initial Release - DC
 #
 # 24/01/2020    v1.1.01     Add functions getportlogin getrcu - CM
+#
+# 10/08/2022    v1.1.02     Bug fix, gethbawwn broken view missing wwns - DC
 #
 # -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -440,6 +442,7 @@ class Raidcomparser:
                 #self.log.info(datadict)
                 port = datadict['PORT']
                 gid = datadict['GID']
+                wwn = datadict['HWWN']
 
                 #cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
                 #cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}

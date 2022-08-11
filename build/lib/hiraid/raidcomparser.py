@@ -440,6 +440,7 @@ class Raidcomparser:
                 #self.log.info(datadict)
                 port = datadict['PORT']
                 gid = datadict['GID']
+                wwn = datadict['HWWN']
 
                 #cmdreturn.view[port] = cmdreturn.view.get(port,{ '_GIDS': { gid:{'_WWNS':{}}} })
                 #cmdreturn.view[port]['_GIDS'][gid]['_WWNS'][wwn] = {}
