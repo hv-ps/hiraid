@@ -1,8 +1,8 @@
 # Work in progress: hiraid 1.0.10
 hiraid is a Python raidcom wrapper for communicating with Hitachi enterprise storage arrays.
-It's primary purpose is to underpin the Hitachi Vantara opensource ansible project: https://github.com/hv-ps/Hitachi.Raidcom.Ansible
-
 raidcom output is parsed to json and also stored beneath storageobject.views.
+
+The primary purpose of this library is to underpin the Hitachi Vantara opensource ansible project: https://github.com/hv-ps/Hitachi.Raidcom.Ansible
 
 ### Install
 > pip3 install git+https://github.com/hv-ps/hiraid.git
