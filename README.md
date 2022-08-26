@@ -1,20 +1,11 @@
-# Work in progress: hiraid 1.0.00
+# Work in progress: hiraid 1.0.10
 hiraid is a Python raidcom wrapper for communicating with Hitachi enterprise storage arrays.
+It's primary purpose is to underpin the Hitachi Vantara opensource ansible project: https://github.com/hv-ps/Hitachi.Raidcom.Ansible
 
-raidcom output is parsed and stored into a logical structure beneath storageobject.views.
-
-Some useful storage admin functions can be found in entry point script 'radmin' ( radmin -h )
-
-## Futures roadmap
-Add cmrest capability
+raidcom output is parsed to json and also stored beneath storageobject.views.
 
 ### Install
 > pip3 install git+https://github.com/hv-ps/hiraid.git
-
-In order for this to work you will need to create a personal access token and authorise the personal access token for use with SAML single sign-on: 
-
-https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/creating-a-personal-access-token 
-https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on
 
 ### Quick start
 > from hiraid.raidcom import Raidcom  
@@ -39,5 +30,3 @@ https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/
 > with open(file,'w') as w:  
 >   w.write(json.dumps(storage.views,indent=4))
 
-### Index your host groups, luns and associated ldevs using the entry point script
-# radmin index -I0 -s 53511

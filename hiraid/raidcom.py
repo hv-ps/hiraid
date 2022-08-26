@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.9"
+version = "v1.0.11"
 
 class Raidcom:    
 
@@ -61,12 +61,20 @@ class Raidcom:
         return portgid
 
     def getcommandstatus(self,request_id: str=None, **kwargs) -> object:
+        '''
+        raidcom get command_status\n
+        request_id = <optional request_id>
+        '''
         requestid_cmd = ('',f"-request_id {request_id}")[request_id is not None]
         cmd = f"{self.path}raidcom get command_status {requestid_cmd} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         return cmdreturn
 
     def resetcommandstatus(self, request_id: str='', requestid_cmd='', **kwargs) -> object:
+        '''
+        raidcom reset command_status
+        request_id = <optional request_id>
+        '''
         if request_id:
             requestid_cmd = f"-request_id {request_id}"
         cmd = f"{self.path}raidcom reset command_status {requestid_cmd} -I{self.instance} -s {self.serial}"
