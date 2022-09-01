@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.9"
+version = "v1.0.11"
 
 class Raidcom:    
 
@@ -34,6 +34,7 @@ class Raidcom:
         self.cciextension = cciextension
         self.cmdoutput = False
         self.views = {}
+        self.data = {}
         self.stats = {}
         self.successfulcmds = []
         self.undocmds = []
@@ -52,6 +53,7 @@ class Raidcom:
                 view[k] = v
         return view
 
+    
     def checkport(self,port):
         if not re.search(r'^cl\w-\D+\d?$',port,re.IGNORECASE): raise Exception('Malformed port: {}'.format(port))
         return port
@@ -61,12 +63,20 @@ class Raidcom:
         return portgid
 
     def getcommandstatus(self,request_id: str=None, **kwargs) -> object:
+        '''
+        raidcom get command_status\n
+        request_id = <optional request_id>
+        '''
         requestid_cmd = ('',f"-request_id {request_id}")[request_id is not None]
         cmd = f"{self.path}raidcom get command_status {requestid_cmd} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         return cmdreturn
 
     def resetcommandstatus(self, request_id: str='', requestid_cmd='', **kwargs) -> object:
+        '''
+        raidcom reset command_status
+        request_id = <optional request_id>
+        '''
         if request_id:
             requestid_cmd = f"-request_id {request_id}"
         cmd = f"{self.path}raidcom reset command_status {requestid_cmd} -I{self.instance} -s {self.serial}"
@@ -134,14 +144,17 @@ class Raidcom:
 
     def getldev(self,ldev_id: str, view_keyname: str='_ldevs', update_view=True, **kwargs) -> object:
         '''
-        e.g.
-        ldev_id: 10000|27:10
+        getldev(ldev_id=1000)
+        getldev(ldev_id=1000-11000)
+        getldev(ldev_id=1000-11000,datafilter={'LDEV_NAMING':'Test_Label_1'})
+        getldev(ldev_id=1000-11000,datafilter={'Anykey_when_val_is_callable':lambda a : float(a.get('Used_Block(GB)',0)) > 10})
         '''
         cmd = f"{self.path}raidcom get ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd)
-        self.parser.getldev(cmdreturn)
+        self.parser.getldev(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
+            self.updateview(self.data,{view_keyname:cmdreturn.data})
             self.updatestats.ldevcounts()
         return cmdreturn
 
@@ -168,6 +181,7 @@ class Raidcom:
 
         if update_view:
             self.updateview(self.views,{view_keyname:{ldevtype:cmdreturn.view}})
+            
             self.updatestats.ldevcounts()
         return cmdreturn
 
@@ -190,9 +204,10 @@ class Raidcom:
         '''
         cmd = f"{self.path}raidcom get port -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+        self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
+            self.updateview(self.data,{view_keyname:cmdreturn.data})
             self.updatestats.portcounters()
 
         #self.portcounters()
@@ -369,6 +384,7 @@ class Raidcom:
         cmdreturn = self.execute(cmd,**kwargs)
         getattr(self.parser,f"getpool_key_{key}")(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.poolcounters()
         return cmdreturn
 
@@ -949,6 +965,7 @@ class Raidcom:
                 self.updateview(cmdreturn.view,future.result().view)
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.hostgroupcounters()
 
         return cmdreturn
@@ -969,6 +986,7 @@ class Raidcom:
                 self.updateview(cmdreturn.view,future.result().view)
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))    
         self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.hbawwncounters()
         return cmdreturn
 
@@ -988,6 +1006,7 @@ class Raidcom:
                 self.updateview(cmdreturn.view,future.result().view)
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.luncounters()
         return cmdreturn
 
@@ -1024,6 +1043,7 @@ class Raidcom:
                 self.updateview(cmdreturn.view,future.result().view)
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.portlogincounters()
         return cmdreturn
 

@@ -1,6 +1,6 @@
 #!/usr/bin/python3.6
 # -----------------------------------------------------------------------------------------------------------------------------------
-# Version v1.1.01
+# Version v1.1.02
 # -----------------------------------------------------------------------------------------------------------------------------------
 #
 # License Terms
@@ -19,6 +19,8 @@
 # 14/01/2020    v1.1.00     Initial Release - DC
 #
 # 24/01/2020    v1.1.01     Add functions getportlogin getrcu - CM
+#
+# 10/08/2022    v1.1.02     Bug fix, gethbawwn broken view missing wwns - DC
 #
 # -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -67,6 +69,7 @@ class Raidcomparser:
                     return False
         return True
             
+    #def initload(self,cmdreturn,header='',keys=[],replaceHeaderChars={}):
     def initload(self,cmdreturn,header='',keys=[]):
 
         cmdreturn.rawdata = [row.strip() for row in list(filter(None,cmdreturn.stdout.split('\n')))]
@@ -75,7 +78,13 @@ class Raidcomparser:
             return
         else:
             cmdreturn.header = cmdreturn.rawdata.pop(0)
+            #cmdreturn.headers = [header.translate(str.maketrans(replaceHeaderChars)) for header in cmdreturn.header.split()]
             cmdreturn.headers = cmdreturn.header.split()
+
+    def translate_headers(self,replaceHeaderChars={}):
+        corrected_dict = { k.replace(':', ''): v for k, v in ori_dict.items() }
+
+    #sample_string.translate(str.maketrans(char_to_replace))
 
     def identify(self, view_keyname: str='_identity'):
 
@@ -206,10 +215,16 @@ class Raidcomparser:
         port = re.sub(r'\d+$','',port)
         return f"{cl}-{port}-{gid}"
 
-    def getldev(self,cmdreturn: object) -> object:
-        ldevdata = dict(map(str.strip, row.split(':', 1)) for row in list(filter(None,cmdreturn.stdout.split('\n'))))
-        #ldevdata = dict(map(str.strip, row.split(':', 1)) for row in cmdreturn.stdout.split('\n') if ':' in row)
-        ldevout = {}
+    def getldev(self,cmdreturn: object,datafilter: dict={}) -> object:
+        ldevdata = [dict(map(str.strip, row.split(':', 1)) for row in list(filter(None,ldev.split('\n')))) for ldev in cmdreturn.stdout.split('\n\n')]
+        prefilter = []
+
+        def createview(cmdreturn):
+            cmdreturn.stats = { 'ldevcount':0 }
+            for datadict in cmdreturn.data:
+                ldev_id = datadict['LDEV']
+                cmdreturn.view[ldev_id] = datadict
+                cmdreturn.stats['ldevcount'] += 1
 
         def PORTs(**kwargs):
             port_data = {}
@@ -229,8 +244,7 @@ class Raidcomparser:
                         port_data[hsd]['hostGroupName'] = self.raidcom.views['_ports'][hsd.rsplit('-',1)[0]]['_GIDS'][hsd.split('-')[-1]]['GROUP_NAME']
                     except KeyError as e:
                         self.raidcom.gethostgrp_key_detail(hsd.rsplit('-',1)[0])
-                        port_data[hsd]['hostGroupName'] = self.raidcom.views['_ports'][hsd.rsplit('-',1)[0]]['_GIDS'][hsd.split('-')[-1]]['GROUP_NAME']
-                    
+                        port_data[hsd]['hostGroupName'] = self.raidcom.views['_ports'][hsd.rsplit('-',1)[0]]['_GIDS'][hsd.split('-')[-1]]['GROUP_NAME']  
 
             if len(port_data):
                 kwargs['ldevout']['PORTs'] = port_data
@@ -256,16 +270,20 @@ class Raidcomparser:
             if len(l) > 1:
                 kwargs['ldevout'][l[1]] = l[3]
 
-        specialfields = {'LDEV': LDEV, 'PORTs': PORTs,'VOL_ATTR': VOL_ATTR, 'VOL_Capacity(BLK)': VOL_Capacity, 'Used_Block(BLK)': Used_Block }    
-        for k, v in ldevdata.items():
-            if k in specialfields:
-                specialfields[k](key=k,value=v,ldevdata=ldevdata,ldevout=ldevout)
-            else:
-                ldevout[k] = v
-
-        cmdreturn.view = { ldevout['LDEV']:ldevout }
-        cmdreturn.data = [ldevout]
+        specialfields = {'LDEV': LDEV, 'PORTs': PORTs,'VOL_ATTR': VOL_ATTR, 'VOL_Capacity(BLK)': VOL_Capacity, 'Used_Block(BLK)': Used_Block }
+        for ldev in ldevdata:
+            ldevout = {}
+            for k, v in ldev.items():
+                if k in specialfields:
+                    specialfields[k](key=k,value=v,ldevdata=ldev,ldevout=ldevout)
+                else:
+                    ldevout[k] = v
+            prefilter.append(ldevout)
+        
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
         return cmdreturn
+        
         
     def getldevlist(self,cmdreturn: object, datafilter: dict={}, **kwargs) -> object:
         
@@ -412,7 +430,8 @@ class Raidcomparser:
             #self.log.info(f"{line}")
             values = line.strip().split(maxsplit=9)
             if len(values) > 9:
-                values[9] = sorted([int(hmo) for hmo in values[9].split()])
+                #values[9] = sorted([int(hmo) for hmo in values[9].split()])
+                values[9] = [str(inthmo) for inthmo in sorted([int(hmo) for hmo in values[9].split()])]
             else:
                 values.append([])
             port = values[0] = re.sub(r'\d+$','', values[0])
