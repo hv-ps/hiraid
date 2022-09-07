@@ -1,5 +1,5 @@
 #from .storage_utils import StorageCapacity
-from historutils.historutils import Storcapunits
+from .historutils.historutils import Storcapunits
 
 class Raidcomstats():
     def __init__(self,raidcom,log):

@@ -12,5 +12,6 @@ hiraid/v_id.py
 hiraid.egg-info/PKG-INFO
 hiraid.egg-info/SOURCES.txt
 hiraid.egg-info/dependency_links.txt
-hiraid.egg-info/requires.txt
 hiraid.egg-info/top_level.txt
+hiraid/historutils/__init__.py
+hiraid/historutils/historutils.py

@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.11"
+version = "v1.0.12"
 
 class Raidcom:    
 
@@ -216,6 +216,9 @@ class Raidcom:
         
         return cmdreturn
 
+
+
+
     def gethostgrp(self,port: str, view_keyname: str='_ports', update_view: bool=True, **kwargs) -> object:
         '''
         raidcom get host_grp\n
@@ -395,7 +398,83 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
+    def getpath(self,view_keyname: str='_paths', update_view=True, **kwargs) -> object:
+        '''
+        raidcom get path\n
+        examples:\n
+        paths = getpath()\n
+        paths = getpath(datafilter={'Serial#':'53511'})\n
+        paths = getport(datafilter={'Anykey_when_val_is_callable':lambda a : a['CM'] != 'NML'})\n\n
+        Returns Cmdview():\n
+        paths.data\n
+        paths.view\n
+        paths.cmd\n
+        paths.returncode\n
+        paths.stderr\n
+        paths.stdout\n
+        paths.stats\n
+        '''
+        cmd = f"{self.path}raidcom get path -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getpath(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        if update_view:
+            self.updateview(self.views,{view_keyname:cmdreturn.view})
+            self.updatestats.portcounters()
+        
+        return cmdreturn
+    
+    def getparitygrp(self,view_keyname: str='_parity_grp', update_view=True, **kwargs) -> object:
+        '''
+        raidcom get parity_grp\n
+        examples:\n
+        parity_grps = getparitygrp()\n
+        parity_grps = getparitygrp(datafilter={'R_TYPE':'14D+2P'})\n
+        parity_grps = getparitygrp(datafilter={'Anykey_when_val_is_callable':lambda a : a['DRIVE_TYPE'] != 'DKS5E-J900SS'})\n\n
+        Returns Cmdview():\n
+        parity_grps.serial\n
+        parity_grps.data\n
+        parity_grps.view\n
+        parity_grps.cmd\n
+        parity_grps.returncode\n
+        parity_grps.stderr\n
+        parity_grps.stdout\n
+        parity_grps.stats\n
+        '''
+        cmd = f"{self.path}raidcom get parity_grp -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getparitygrp(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        if update_view:
+            self.updateview(self.views,{view_keyname:cmdreturn.view})
+            self.updatestats.portcounters()
+        
+        return cmdreturn
 
+    def getlicense(self,view_keyname: str='_license', update_view=True, **kwargs) -> object:
+        '''
+        raidcom get license\n
+        examples:\n
+        licenses = getlicense()\n
+        licenses = getlicense(datafilter={'Type':'PER'})\n
+        licenses = getlicense(datafilter={'STS':'INS'})\n
+        licenses = getlicense(datafilter={'Anykey_when_val_is_callable':lambda l : 'Migration' in l['Name']})\n\n
+        Returns Cmdview():\n
+        parity_grps.serial\n
+        parity_grps.data\n
+        parity_grps.view\n
+        parity_grps.cmd\n
+        parity_grps.returncode\n
+        parity_grps.stderr\n
+        parity_grps.stdout\n
+        parity_grps.stats\n
+        '''
+        cmd = f"{self.path}raidcom get license -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getlicense(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        if update_view:
+            self.updateview(self.views,{view_keyname:cmdreturn.view})
+            self.updatestats.portcounters()
+        
+        return cmdreturn
     # Snapshots
 
     def getsnapshot(self, view_keyname: str='_snapshots', **kwargs) -> object:
@@ -885,8 +964,9 @@ class Raidcom:
             cmdarg = "-"+str(gid)
 
         cmd = f"{self.path}raidscan -p {port}{cmdarg} -ITC{self.instance} -s {self.serial} -CLI"
+        #getattr(self.parser,f"getpool_key_{key}")(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.gethostgrptcscan(cmdreturn)
+        self.parser.gethostgrptcscan(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
@@ -901,7 +981,7 @@ class Raidcom:
         
         cmd = f"{self.path}raidscan -p {port}{cmdarg} -I{mode}{self.instance} -s {self.serial} -CLI"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.raidscanremote(cmdreturn)
+        self.parser.raidscanremote(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
     
@@ -963,6 +1043,7 @@ class Raidcom:
                 cmdreturn.stderr.append(future.result().stderr)
                 cmdreturn.data.extend(future.result().data)
                 self.updateview(cmdreturn.view,future.result().view)
+        cmdreturn.serial = self.serial
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
@@ -984,6 +1065,7 @@ class Raidcom:
                 cmdreturn.stderr.append(future.result().stderr)
                 cmdreturn.data.extend(future.result().data)
                 self.updateview(cmdreturn.view,future.result().view)
+        cmdreturn.serial = self.serial
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))    
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
@@ -1004,6 +1086,7 @@ class Raidcom:
                 cmdreturn.stderr.append(future.result().stderr)
                 cmdreturn.data.extend(future.result().data)
                 self.updateview(cmdreturn.view,future.result().view)
+        cmdreturn.serial = self.serial
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
@@ -1022,6 +1105,7 @@ class Raidcom:
                 cmdreturn.stderr.append(future.result().stderr)
                 cmdreturn.data.extend(future.result().data)
                 self.updateview(cmdreturn.view,future.result().view)
+        cmdreturn.serial = self.serial
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         
         self.updateview(self.views,{view_keyname:cmdreturn.view})
@@ -1041,16 +1125,40 @@ class Raidcom:
                 cmdreturn.stderr.append(future.result().stderr)
                 cmdreturn.data.extend(future.result().data)
                 self.updateview(cmdreturn.view,future.result().view)
+        cmdreturn.serial = self.serial
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.portlogincounters()
         return cmdreturn
 
+
+    def concurrent_raidscanremote(self,portgids: list=[], max_workers: int=30, view_keyname: str='_remotereplication', **kwargs) -> object:
+        '''
+        ldev_ids = [1234,1235,1236]\n
+        mode='TC', view_keyname='_remotereplication',
+        '''
+        #def raidscanremote(self,port: str, gid=None, mode='TC', view_keyname='_remotereplication', **kwargs) -> object:
+        cmdreturn = CmdviewConcurrent()
+        for portgid in portgids: self.checkportgid(portgid)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_out = { executor.submit(self.raidscanremote,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
+            for future in concurrent.futures.as_completed(future_out):
+                cmdreturn.stdout.append(future.result().stdout)
+                cmdreturn.stderr.append(future.result().stderr)
+                cmdreturn.data.extend(future.result().data)
+                self.updateview(cmdreturn.view,future.result().view)
+        cmdreturn.serial = self.serial
+        cmdreturn.view = dict(sorted(cmdreturn.view.items()))
+        
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.updatestats.ldevcounts()
+        return cmdreturn
+
     def concurrent_addluns(self,lun_data: list=[{}], max_workers=20) -> object:
         '''
         lun_data: [{'PORT':CL1-A|CL1-A-1, 'GID':None|1, 'host_grp_name':'Name', 'LUN':0,'LDEV':1000}]
-        '''
+        
         lun_data = [
             {'PORT':'CL1-A', 'LUN':0, 'LDEV':46100, 'host_grp_name':'testing123'},
             {'PORT':'CL1-A', 'LUN':1, 'LDEV':46101, 'host_grp_name':'testing123'},
@@ -1063,6 +1171,7 @@ class Raidcom:
             {'PORT':'CL1-A', 'LUN':8, 'LDEV':46108, 'host_grp_name':'testing123'},
             {'PORT':'CL1-A', 'LUN':9, 'LDEV':46109, 'host_grp_name':'testing123'},
             {'PORT':'CL1-A', 'LUN':10, 'LDEV':46110, 'host_grp_name':'testing123'}]
+        '''
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_out = { executor.submit(self.addlun,port=lun['PORT'],lun_id=lun['LUN'],ldev_id=lun['LDEV'],host_grp_name=lun['host_grp_name']): lun for lun in lun_data}
             for future in concurrent.futures.as_completed(future_out):
@@ -1099,6 +1208,7 @@ class Raidcom:
 
         cmdreturn = Cmdview(cmd=cmd)
         cmdreturn.expectedreturn = expectedreturn
+        cmdreturn.serial = self.serial
         if kwargs.get('noexec'):
             return cmdreturn
         if kwargs.get('raidcom_asyncronous'):

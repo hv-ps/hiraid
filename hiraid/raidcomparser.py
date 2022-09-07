@@ -27,7 +27,7 @@
 import re
 import collections
 from typing import Callable
-from historutils.historutils import Storcapunits
+from .historutils.historutils import Storcapunits
 from .cmdview import Cmdview
 from .v_id import VId
 import copy
@@ -414,7 +414,6 @@ class Raidcomparser:
         
         def createview(data):
             for datadict in data:
-                self.log.info(datadict)
                 port = datadict['PORT']
                 gid = datadict['GID']
                 lun = datadict['LUN']
@@ -641,6 +640,86 @@ class Raidcomparser:
         createview(cmdreturn.data)
         return cmdreturn
 
+    def getpath(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
+        '''
+        cmdreturn: getpath cmdreturn object as input
+        default_view_keyname: default _ports
+        '''
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'pathcount':0 }
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                #PHG GROUP STS CM IF MP# PORT   WWN                 PR LUN PHS  Serial# PRODUCT_ID LB PM DM QD TO(s) PBW(s)
+                phg = datadict['PHG']
+                group = datadict['GROUP']
+                port = datadict['PORT']
+                cmdreturn.view[phg] = cmdreturn.view.get(phg,{})
+                cmdreturn.view[phg][group] = cmdreturn.view[phg].get(group,{})
+                cmdreturn.view[phg][group][port] = cmdreturn.view[phg][group].get(port,datadict)
+                cmdreturn.stats['pathcount'] += 1
+
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
+        return cmdreturn
+
+    def getparitygrp(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
+        '''
+        cmdreturn: getparitygrp cmdreturn object as input
+        default_view_keyname: default _parity_grps
+        '''
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'parity_grp_count':0 }
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                #PHG GROUP STS CM IF MP# PORT   WWN                 PR LUN PHS  Serial# PRODUCT_ID LB PM DM QD TO(s) PBW(
+                group = datadict['GROUP']
+                cmdreturn.view[group] = datadict
+                cmdreturn.stats['parity_grp_count'] += 1
+
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
+        return cmdreturn
+
+    def getlicense(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
+        '''
+        cmdreturn: getlicense cmdreturn object as input
+        default_view_keyname: default _license
+        '''
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'installed_licenses':0 }
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                license = datadict['Name']
+                cmdreturn.view[license] = datadict
+                if datadict['STS'] == "INS":
+                    cmdreturn.stats['installed_licenses'] += 1
+
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            row = line.strip().split(maxsplit=8)
+            row[8] = row[8].replace('"','')
+            cmdreturn.headers.append("Serial#")
+            row.append(cmdreturn.serial)
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
+        return cmdreturn
+
     def getcommandstatus(self,cmdreturn) -> dict:
 
         self.initload(cmdreturn)
@@ -648,7 +727,7 @@ class Raidcomparser:
         def withreqid(data):
             #REQID    R SSB1    SSB2    Serial#      ID  Description\n
             #00000019 -    -       -     358149   10011  -\n
-            for line in cmdreturn.rawdata:                
+            for line in cmdreturn.rawdata:             
                 values = (reqid,r,ssb1,ssb2,serial,id,description) = line.split(maxsplit=6)
                 cmdreturn.view[reqid] = cmdreturn.view.get(reqid,{})
                 cmdreturn.data.append(dict(zip(cmdreturn.headers, values)))
@@ -698,9 +777,47 @@ class Raidcomparser:
         return cmdreturn
 
 
-    def gethostgrptcscan(self,cmdreturn) -> object:
+    def gethostgrptcscan(self,cmdreturn,datafilter: dict={}) -> object:
+
+        '''        self.initload(cmdreturn)
+        cmdreturn.stats = { 'loggedinhostcount':0 }
+
+        def createview(data):
+            for datadict in data:
+                #self.log.info(datadict)
+                port = datadict['PORT']
+                cmdreturn.view[port]['_PORT_LOGINS'][login_wwn] = { "Serial#": serial }
+                cmdreturn.stats['loggedinhostcount'] += 1
+
+        prefiltered = []
+        for line in cmdreturn.rawdata:
+            col = line.split()
+            port = re.sub(r'\d+$','',col[0])
+            cmdreturn.view[port] = cmdreturn.view.get(port,{'_PORT_LOGINS':{}})
+            login_wwn,serial,dash = col[1],col[2],col[3]
+            values = (port,login_wwn,serial,dash)
+            prefiltered.append(dict(zip(cmdreturn.headers, values)))
+
+        cmdreturn.data = list(filter(lambda l: self.applyfilter(l,datafilter),prefiltered))
+        createview(cmdreturn.data)
+        return cmdreturn'''
+
+
+
       
         self.initload(cmdreturn)
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                port = datadict['PORT#']
+                ldevid = datadict['LDEV#']
+                cmdreturn.view[port] = cmdreturn.view.get(port,{})
+                cmdreturn.view[port][ldevid] = cmdreturn.view[port].get(ldevid,datadict)
+                if cmdreturn.view[port][ldevid]['P/S'] == 'SMPL':
+                    cmdreturn.view[port][ldevid]['Status'] = 'SMPL'
+
+        prefiltered = []
+
         for headingIndex in range(0, len(cmdreturn.headers)):
             if cmdreturn.headers[headingIndex] == '/ALPA/C':
                 x = re.split(r'/', cmdreturn.headers[headingIndex])
@@ -713,21 +830,13 @@ class Raidcomparser:
             hsdkeys[1] = re.sub(r'\d+$','',hsdkeys[1])
             values[0] = '-'.join(hsdkeys)
             if len(values) != len(cmdreturn.headers): raise("header and data length mismatch")
-            prikey = port = values[0]
-            seckey = ldevid = values[7]
-            cmdreturn.view[prikey] = cmdreturn.view.get(prikey,{})
-            cmdreturn.view[prikey][seckey] = cmdreturn.view[prikey].get(seckey,{})
-            
-            for value,head in zip(values,cmdreturn.headers):
-                cmdreturn.view[port][ldevid][head] = value 
-            # Check with Clive:
-            if cmdreturn.view[port][ldevid]['P/S'] == 'SMPL':
-                cmdreturn.view[port][ldevid]['Status'] = 'SMPL'
-
+            prefiltered.append(dict(zip(cmdreturn.headers, values)))
+        cmdreturn.data = list(filter(lambda l: self.applyfilter(l,datafilter),prefiltered))
+        createview(cmdreturn)
         return cmdreturn
    
-    def raidscanremote(self,cmdreturn) -> object:
-        self.gethostgrptcscan(cmdreturn)
+    def raidscanremote(self,cmdreturn,datafilter: dict={}) -> object:
+        self.gethostgrptcscan(cmdreturn,datafilter)
         return cmdreturn
 
     def raidscanmu(self,cmdreturn,mu) -> dict:
