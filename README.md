@@ -1,4 +1,4 @@
-# Work in progress: hiraid 1.0.10
+# Work in progress
 hiraid is a Python raidcom wrapper for communicating with Hitachi enterprise storage arrays.
 raidcom output is parsed to json and also stored beneath storageobject.views.
 
