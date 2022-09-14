@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: hiraid
-Version: 1.0.14
+Version: 1.0.15
 Summary: Hitachi raidcom wrapper
 Home-page: https://github.com/hv-ps/hiraid
 Author: Darren Chambers
@@ -10,7 +10,7 @@ Platform: UNKNOWN
 Description-Content-Type: text/markdown
 License-File: LICENSE
 
-# Work in progress: hiraid 1.0.10
+# Work in progress
 hiraid is a Python raidcom wrapper for communicating with Hitachi enterprise storage arrays.
 raidcom output is parsed to json and also stored beneath storageobject.views.
 
