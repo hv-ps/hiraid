@@ -554,7 +554,7 @@ class Raidcom:
         ldev.stdout\n
         '''
         cmdparam, ucmdparam, cmddict, ucmddict = '','',{},{}
-        options = { 'capacity_saving': ['compression','deduplication_compression'], 'compression_acceleration':['enable','disable'], 'capacity_saving_mode':['inline','postprocess']}
+        options = { 'capacity_saving': ['compression','deduplication_compression','disable'], 'compression_acceleration':['enable','disable'], 'capacity_saving_mode':['inline','postprocess']}
 
         for arg in kwargs:
             if arg in options:

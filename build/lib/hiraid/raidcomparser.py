@@ -291,7 +291,7 @@ class Raidcomparser:
         def createview(cmdreturn):
             cmdreturn.stats = { 'ldevcount':0 }
             for datadict in cmdreturn.data:
-                self.log.info(datadict)
+                #self.log.info(datadict)
                 ldev_id = datadict['LDEV']
                 cmdreturn.view[ldev_id] = datadict
                 cmdreturn.stats['ldevcount'] += 1
