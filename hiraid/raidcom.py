@@ -107,7 +107,7 @@ class Raidcom:
         examples:\n
         rq = raidqry()\n
         rq = raidqry(datafilter={'Serial#':'350147'})\n
-        rq = raidqry(datafilter={'Anykey_when_val_is_callable':lambda a : int(a['Cache(MB)']) > 50000})\n\n
+        rq = raidqry(datafilter={'callable':lambda a : int(a['Cache(MB)']) > 50000})\n\n
         Returns Cmdview():\n
         rq.data\n
         rq.view\n
@@ -226,7 +226,7 @@ class Raidcom:
         You will instead obtain unused host groups and more importantly the resource group id.\n
         '''
         '''
-        raidcom host_grp -key detail\n
+        raidcom host_grp\n
         examples:\n
         host_grps = gethostgrp(port="cl1-a")\n
         host_grps = gethostgrp(port="cl1-a-140")\n
