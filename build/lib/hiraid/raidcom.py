@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.20"
+version = "v1.0.21"
 
 class Raidcom:    
 
