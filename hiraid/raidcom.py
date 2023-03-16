@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.12"
+version = "v1.0.20"
 
 class Raidcom:    
 
@@ -538,7 +538,7 @@ class Raidcom:
     '''
     commands
     '''
-    def addldev(self,ldev_id: str,poolid: int,capacity: int, return_ldev: bool=True, **kwargs) -> object:
+    def XXXaddldev(self,ldev_id: str,poolid: int,capacity: int, return_ldev: bool=True, **kwargs) -> object:
         '''
         raidcom add ldev -ldev_id <Ldev#> -pool <ID#> -capacity <block_size>\n
         examples:\n
@@ -568,10 +568,12 @@ class Raidcom:
 
         cmd = f"{self.path}raidcom add ldev -ldev_id auto -ldev_range {ldev_id}-{ldev_id} -pool {poolid} -capacity {capacity} {cmdparam} -request_id auto -I{self.instance} -s {self.serial}"
         cmddef = { 'cmddef': 'addldev', 'args':{ 'ldev_id':ldev_id, 'poolid':poolid, 'capacity':capacity }.update(cmddict)}
+
         undocmd = [f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -pool {poolid} -capacity {capacity} {ucmdparam} -I{self.instance} -s {self.serial}"]
         undodef = [{ 'undodef': 'deleteldev', 'args':{ 'ldev_id':ldev_id }.update(ucmddict)}]
 
         cmdreturn = self.execute(cmd=cmd,undocmds=undocmd,undodefs=undodef,raidcom_asyncronous=False,**kwargs)
+        print(cmdreturn.stdout)
         reqid = cmdreturn.stdout.rstrip().split(' : ')
         
         if not re.search(r'REQID',reqid[0]):
@@ -588,7 +590,68 @@ class Raidcom:
             cmdreturn.data = getldev.data
             cmdreturn.view = getldev.view
         return cmdreturn
+    
+    def addldev(self,ldev_id: str,poolid: int,capacity: int, return_ldev: bool=True, start: int=None, end: int=None, **kwargs) -> object:
+        '''
+        raidcom add ldev -ldev_id <Ldev#> -pool <ID#> -capacity <block_size>\n
+        examples:\n
+        ldev = Raidcom.addldev(ldev_id=12025,poolid=0,capacity=2097152)\n
+        ldev = Raidcom.addldev(ldev_id=12025,poolid=0,capacity="1g")\n
+        ldev = Raidcom.addldev(ldev_id='auto',poolid=0,start=1000,end=2000,capacity="1g",capacity_saving="compression")
+        \n
+        Returns Cmdview():\n
+        ldev.data\n
+        ldev.view\n
+        ldev.cmd\n
+        ldev.returncode\n
+        ldev.stderr\n
+        ldev.stdout\n
+        '''
+        cmdparam, ucmdparam, cmddict, ucmddict = '','',{},{}
+        options = { 'capacity_saving': ['compression','deduplication_compression','disable'], 'compression_acceleration':['enable','disable'], 'capacity_saving_mode':['inline','postprocess']}
 
+        for arg in kwargs:
+            if arg in options:
+                if kwargs[arg] not in options[arg]:
+                    raise Exception(f"Optional command argument {arg} has incorrect value {kwargs[arg]}, possible options are {options[arg]}")
+                cmdparam = f"{cmdparam} -{arg} {kwargs[arg]} "
+                cmddict[arg] = kwargs[arg]
+            if arg == "capacity_saving" and kwargs[arg] != "disable":
+                ucmdparam = f"-operation initialize_capacity_saving"
+                ucmddict['operation'] = 'initialize_capacity_saving'
+
+        if ldev_id == 'auto':
+            if not start or not end:
+                raise Exception(f"When ldev_id is specified as 'auto' range_start and range_end ldev_ids must also be supplied")
+            else:
+                cmd = f"{self.path}raidcom add ldev -ldev_id auto -ldev_range {start}-{end} -pool {poolid} -capacity {capacity} {cmdparam} -request_id auto -I{self.instance} -s {self.serial}"
+                cmdreturn = self.execute(cmd=cmd,raidcom_asyncronous=False,**kwargs)
+        else:
+            cmd = f"{self.path}raidcom add ldev -ldev_id auto -ldev_range {ldev_id}-{ldev_id} -pool {poolid} -capacity {capacity} {cmdparam} -request_id auto -I{self.instance} -s {self.serial}"
+            cmdreturn = self.execute(cmd=cmd,raidcom_asyncronous=False,**kwargs)
+            
+        reqid = cmdreturn.stdout.rstrip().split(' : ')
+        
+        if not re.search(r'REQID',reqid[0]):
+            raise Exception(f"Unable to obtain REQID from stdout {cmdreturn}.")
+        try:
+            getcommandstatus = self.getcommandstatus(request_id=reqid[1])
+            self.parser.getcommandstatus(getcommandstatus)
+            auto_ldev_id = getcommandstatus.data[0]['ID']
+            undocmd = f"{self.path}raidcom delete ldev -ldev_id {auto_ldev_id} -pool {poolid} -capacity {capacity} {ucmdparam} -I{self.instance} -s {self.serial}"
+            undodef = { 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }.update(ucmddict)}
+            cmdreturn.undocmds.insert(0,undocmd)
+            cmdreturn.undodefs.insert(0,undodef)
+            self.resetcommandstatus(request_id=reqid[1])
+        except Exception as e:
+            raise Exception(f"Failed to create ldev {ldev_id}, request_id {reqid[1]} error {e}")
+
+        if not kwargs.get('noexec') and return_ldev:
+            getldev = self.getldev(ldev_id=auto_ldev_id)
+            cmdreturn.data = getldev.data
+            cmdreturn.view = getldev.view
+        
+        return cmdreturn
 
     def extendldev(self, ldev_id: str, capacity: int, **kwargs) -> object:
         '''
@@ -607,27 +670,29 @@ class Raidcom:
         undodefs.insert(0,undodef)
 
     def deleteldev_undo(self,ldev_id: str, **kwargs):
-        print("deleteldev_undo")
+        print(f"deleteldev_undo {ldev_id}")
         ldev = self.getldev(ldev_id=ldev_id)
         undocmds = []
         undodefs = []
         if len(ldev.data[0].get('LDEV_NAMING',"")):
+            print("populateundo - LDEV_NAMING")
             self.populateundo({'undodef':'modifyldevname','args':{'ldev_id':ldev_id,'ldev_name':ldev.data[0]['LDEV_NAMING']}},undocmds,undodefs)
         if ldev.data[0]['VOL_TYPE'] != "NOT DEFINED":
+            print("populateundo - NOT DEFINED")
             self.populateundo({'undodef':'addldev','args':{'ldev_id':ldev_id,'capacity':ldev.data[0]['VOL_Capacity(BLK)'],'poolid':ldev.data[0]['B_POOLID']}},undocmds,undodefs)
+        print("returning from populateundo")
         return undocmds,undodefs,ldev
             
     def deleteldev(self, ldev_id: str, **kwargs) -> object:
-        print("deleteldev")
+        print(f"deleteldev {ldev_id}, call deleteldev_undo")
         undocmds,undodefs,ldev = self.deleteldev_undo(ldev_id=ldev_id)
-        
+        print(f"after deleteldev_undo")
         #self.resetcommandstatus()
         cmd = f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
 
         cmdreturn = self.execute(cmd,undocmds,undodefs,raidcom_asyncronous=True,**kwargs)
         cmdreturn.view = ldev.view
         cmdreturn.data = ldev.data
-    
         #self.getcommandstatus()
         return cmdreturn
 
@@ -787,7 +852,13 @@ class Raidcom:
         self.parser.getcommandstatus(getcommandstatus)
         auto_ldev_id = getcommandstatus.data[0]['ID']
         undodef = {'undodef':'deleteldev','args':{'ldev_id':auto_ldev_id}}
-        undo = self.deleteldev(ldev_id=auto_ldev_id,noexec=True)
+
+        print(f"auto_ldev_id: {auto_ldev_id}")
+        print(f"Autoldev requires a little work for an undo..")
+        #undo = self.deleteldev(ldev_id=auto_ldev_id,noexec=True)
+        #undocmd = [f"{self.path}raidcom delete ldev -ldev_id {auto_ldev_id} -I{self.instance} -s {self.serial}"]
+        #undodef = [{ 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }.update(ucmddict)}]
+        print("After deleteldev")
         cmdreturn.view = undo.view
         cmdreturn.data = undo.data
         cmdreturn.undocmds.insert(0,undo.cmd)

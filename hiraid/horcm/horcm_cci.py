@@ -1,5 +1,4 @@
 
-from importlib.resources import path
 import os
 import re
 import json
@@ -419,6 +418,83 @@ class Cci():
         cmd = '{}pairsplit -g {} {} -I{} {}'.format(self.path,group,opt_device,inst,opts)
         stdout, stderr, cmdreturn = self.execute(cmd)
         return { 'stdout':stdout, 'stderr':stderr, 'cmdreturn':cmdreturn }
+    
+    def pairresync(self, inst: int, group: str, device: str=None, opts: str='', pace: int=15, mode: str='') -> dict:
+        '''
+        inst: horcm_inst
+        group: horcm group
+        device: Optionally pass an individual device
+        opts: Pass pairresync options
+        '''
+        opt_device = ''
+        if device:
+            opt_device = f'-d {device}'
+        cmd = '{}pairresync -g {} {} -c {} -I{}{} {}'.format(self.path,group,opt_device,pace,mode,inst,opts)
+        stdout, stderr, cmdreturn = self.execute(cmd)
+        return { 'stdout':stdout, 'stderr':stderr, 'cmdreturn':cmdreturn }
+    
+    def pairtakeover(self, inst: int, group: str, device: str=None, timeout: int=60, mode: str='') -> dict:
+        '''
+        inst: horcm_inst
+        group: horcm group
+        device: Optionally pass an individual device
+        opts: Pass pairtakeover options
+        '''
+        opt_device = ''
+        if device:
+            opt_device = f'-d {device}'
+        cmd = '{}horctakeover -g {} {} -t {} -I{}{}'.format(self.path,group,opt_device,timeout,mode,inst)
+        stdout, stderr, cmdreturn = self.execute(cmd, expectedreturn=1)
+        return { 'stdout':stdout, 'stderr':stderr, 'cmdreturn':cmdreturn }
+    
+    def raidvchkdsp(self,inst: int,group: str,device: str='',operation: str='-v gflag',mode: str='',opts: str='') -> dict:
+        '''
+        group: Horcm_group
+        device: Optionally pass an individual device
+        operation: only gflag support as parsers only capability
+        opts: e.g. -fx to display ldev id in hex
+        '''
+        cmd = '{}raidvchkdsp -g {} {} {} -I{}{} {}'.format(self.path,group,device,operation,mode,inst,opts)
+        stdout, stderr, cmdreturn = self.execute(cmd)
+        raidvchkdsplayout = [row.strip() for row in list(filter(None,stdout.split('\n')))]
+        raidvchkdspdata = self.parse_raidvchkdsp(raidvchkdsplayout)
+        return { 'stdout':stdout, 'stderr':stderr, 'cmdreturn':cmdreturn, 'raidvchkdspdata':raidvchkdspdata }
+    
+    def parse_raidvchkdsp(self,raidvchkdsp: list) -> dict:
+        '''
+        TODO THIS IS BROKEN
+        Group	PairVol   Port#  TID  LU  Seq# LDEV# GI-C-R-W-S  PI-C-R-W-S  R-Time
+        HUR	HUR1     CL1-A-11  0    0 612239   102  E E E E E   E E E E E       0
+        Returns dictionary of parsed raidvchkdsp:
+        { Group: { PairVol: { Port#: { heading:data } } } }
+        '''
+        headings = raidvchkdsp.pop(0).split()
+        stringExistsAtPosition = headings.index('GI-C-R-W-S')
+        if (stringExistsAtPosition != -1):
+            #'GI-C-R-W-S' and we need to split this
+            headings[stringExistsAtPosition] = 'GI'
+            headings.insert(stringExistsAtPosition+1,'GS')
+            headings.insert(stringExistsAtPosition+1,'GW')
+            headings.insert(stringExistsAtPosition+1,'GR')
+            headings.insert(stringExistsAtPosition+1,'GC')
+        stringExistsAtPosition = headings.index('PI-C-R-W-S')
+        if (stringExistsAtPosition != -1):
+            #'PI-C-R-W-S' and we need to split this
+            headings[stringExistsAtPosition] = 'PI'
+            headings.insert(stringExistsAtPosition+1,'PS')
+            headings.insert(stringExistsAtPosition+1,'PW')
+            headings.insert(stringExistsAtPosition+1,'PR')
+            headings.insert(stringExistsAtPosition+1,'PC')
+        view = { 'pairs': {} }
+        for line in raidvchkdsp:
+            sline = line.split()
+            if len(sline) != len(headings): raise("header and data length mismatch")
+            data = {head:item for item,head in zip(sline,headings)}
+            view['pairs'][data['Group']] = view['pairs'].get(data['Group'],{})
+            view['pairs'][data['Group']][data['PairVol']] = view['pairs'][data['Group']].get(data['PairVol'],{})
+            #view['pairs'][data['Group']][data['PairVol']][data['Port#']] = data
+            view['pairs'][data['Group']][data['PairVol']] = data
+        return view
     
     def pairevtwaitexec(self,cmd):
         self.log.info('Executing: {}'.format(cmd))

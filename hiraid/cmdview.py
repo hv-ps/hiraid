@@ -14,6 +14,7 @@ class Cmdview():
         self.undocmds = []
         self.undodefs = []
         self.stats = {}
+        self.actions = {}
 
 class CmdviewConcurrent():
     def __init__(self,returncode=[],stdout=[],stderr=[]):

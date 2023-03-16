@@ -102,7 +102,7 @@ class Raidcomparser:
         self.raidcom.horcm_ver = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['HORCM_ver']
 
         if not self.raidcom.vtype:
-            raise Exception("Unable to identify self, check v_id.py for supported models")
+            raise Exception(f"Unable to identify self, check v_id.py for supported models, dump raidqry: {self.raidcom.views['_raidqry'][str(self.raidcom.serial)]}")
         
         view = { 'v_id': self.raidcom.v_id, 'vtype': self.raidcom.vtype, 'model': self.raidcom.model, 'micro_ver': self.raidcom.micro_ver, 'cache': self.raidcom.cache, 'horcm_ver': self.raidcom.horcm_ver, 'serial': self.raidcom.serial }
         #cmdreturn = Cmdview(returncode=0,stdout=view,stderr=None)
@@ -130,7 +130,6 @@ class Raidcomparser:
         return cmdreturn
 
    
-
     def getresource(self, cmdreturn: object, datafilter: dict={}, altview: Callable=None, **kwargs ) -> dict:
         '''
         stdout as input from get resource command
@@ -281,6 +280,7 @@ class Raidcomparser:
             prefilter.append(ldevout)
         
         cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        
         createview(cmdreturn)
         return cmdreturn
         
@@ -512,6 +512,7 @@ class Raidcomparser:
             for datadict in data:
                 #self.log.info(datadict)
                 port = datadict['PORT']
+                login_wwn = datadict['LOGIN_WWN']
                 cmdreturn.view[port]['_PORT_LOGINS'][login_wwn] = { "Serial#": serial }
                 cmdreturn.stats['loggedinhostcount'] += 1
 
