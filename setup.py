@@ -6,7 +6,7 @@ with open('README.md', 'r') as fh:
 
 setuptools.setup(
     name='hiraid',
-    version='1.0.21',
+    version='1.0.22',
     description='Hitachi raidcom wrapper',
     long_description=long_description,
     long_description_content_type='text/markdown',

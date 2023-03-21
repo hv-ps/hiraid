@@ -107,7 +107,7 @@ class Raidcom:
         examples:\n
         rq = raidqry()\n
         rq = raidqry(datafilter={'Serial#':'350147'})\n
-        rq = raidqry(datafilter={'Anykey_when_val_is_callable':lambda a : int(a['Cache(MB)']) > 50000})\n\n
+        rq = raidqry(datafilter={'callable':lambda a : int(a['Cache(MB)']) > 50000})\n\n
         Returns Cmdview():\n
         rq.data\n
         rq.view\n
@@ -226,7 +226,7 @@ class Raidcom:
         You will instead obtain unused host groups and more importantly the resource group id.\n
         '''
         '''
-        raidcom host_grp -key detail\n
+        raidcom host_grp\n
         examples:\n
         host_grps = gethostgrp(port="cl1-a")\n
         host_grps = gethostgrp(port="cl1-a-140")\n
@@ -603,6 +603,7 @@ class Raidcom:
         ldev.data\n
         ldev.view\n
         ldev.cmd\n
+        ldev.undocmds\n
         ldev.returncode\n
         ldev.stderr\n
         ldev.stdout\n
@@ -642,6 +643,9 @@ class Raidcom:
             undodef = { 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }.update(ucmddict)}
             cmdreturn.undocmds.insert(0,undocmd)
             cmdreturn.undodefs.insert(0,undodef)
+            echo = f'echo "Executing: {undocmd}"'
+            self.undocmds.insert(0,undocmd)
+            self.undocmds.insert(0,echo)
             self.resetcommandstatus(request_id=reqid[1])
         except Exception as e:
             raise Exception(f"Failed to create ldev {ldev_id}, request_id {reqid[1]} error {e}")

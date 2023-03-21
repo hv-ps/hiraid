@@ -4,7 +4,7 @@ raidcom output is parsed to json and also stored beneath storageobject.views.
 
 The primary purpose of this library is to underpin the Hitachi Vantara opensource ansible project: https://github.com/hv-ps/Hitachi.Raidcom.Ansible
 
-### Install
+### Install Latest
 > pip3 install git+https://github.com/hv-ps/hiraid.git
 
 ### Quick start
