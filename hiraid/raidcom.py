@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.21"
+version = "v1.0.23"
 
 class Raidcom:    
 
@@ -224,13 +224,9 @@ class Raidcom:
         raidcom get host_grp\n
         Better to use gethostgrp_key_detail rather than this function.\n
         You will instead obtain unused host groups and more importantly the resource group id.\n
-        '''
-        '''
         raidcom host_grp\n
         examples:\n
         host_grps = gethostgrp(port="cl1-a")\n
-        host_grps = gethostgrp(port="cl1-a-140")\n
-        host_grps = gethostgrp(port="cl1-a",host_grp_name="MyHostGroup")\n
         host_grps = gethostgrp(port="cl1-a",datafilter={'HMD':'VMWARE_EX'})\n
         host_grps = gethostgrp(port="cl1-a",datafilter={'GROUP_NAME':'MyGostGroup})\n
         host_grps = gethostgrp(port="cl1-a",datafilter={'Anykey_when_val_is_callable':lambda a : 'TEST' in a['GROUP_NAME'] })\n
@@ -276,15 +272,16 @@ class Raidcom:
         Differs slightly from raidcom\n
         If port format cl-port-gid or host_grp_name is supplied with cl-port host_grp is filtered.
         '''
-        cmdparam = ""
+        #cmdparam = ""
+        
         host_grp_name = kwargs.get('host_grp_name')
         resourceparam = ""
         if re.search(r'cl\w-\D+\d?-\d+',port,re.IGNORECASE):
             if host_grp_name: raise Exception(f"Fully qualified port {port} does not require host_grp_name parameter: {host_grp_name}")
-            kwargs['host_grp_filter'] = { 'HOST_GRP_ID': port.upper() } 
+            kwargs['datafilter'] = { 'HOST_GRP_ID': port.upper() } 
         elif host_grp_name:
-            cmdparam = f" -host_grp_name '{host_grp_name}' "
-            kwargs['host_grp_filter'] = { 'GROUP_NAME': host_grp_name }
+            #cmdparam = f" -host_grp_name '{host_grp_name}' "
+            kwargs['datafilter'] = { 'GROUP_NAME': host_grp_name }
 
         resource_param = ("",f" -resource {kwargs.get('resource')} ")[kwargs.get('resource') is not None]
             
@@ -549,6 +546,7 @@ class Raidcom:
         ldev.data\n
         ldev.view\n
         ldev.cmd\n
+        ldev.undocmds\n
         ldev.returncode\n
         ldev.stderr\n
         ldev.stdout\n
@@ -597,7 +595,7 @@ class Raidcom:
         examples:\n
         ldev = Raidcom.addldev(ldev_id=12025,poolid=0,capacity=2097152)\n
         ldev = Raidcom.addldev(ldev_id=12025,poolid=0,capacity="1g")\n
-        ldev = Raidcom.addldev(ldev_id='auto',poolid=0,start=1000,end=2000,capacity="1g",capacity_saving="compression")
+        ldev = Raidcom.addldev(ldev_id='auto',poolid=0,start=1000,end=2000,capacity="1g",capacity_saving="compression")\n
         \n
         Returns Cmdview():\n
         ldev.data\n
