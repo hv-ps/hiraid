@@ -18,3 +18,11 @@ HORCM_INST
 #dev_group              ip_address      service
 $HORCM_INST
 '''
+
+minimal_template = '''
+# Date: $date
+# Inst: $instance
+
+HORCM_CMD
+$HORCM_CMD
+'''

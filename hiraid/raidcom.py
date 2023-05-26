@@ -19,19 +19,21 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.23"
+version = "v1.0.30"
 
 class Raidcom:    
 
     version = version
     
-    def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging):
+    def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging,username=None,password=None):
 
         self.serial = serial
         self.log = log
         self.instance = instance
         self.path = path
         self.cciextension = cciextension
+        self.username = username
+        self.password = password
         self.cmdoutput = False
         self.views = {}
         self.data = {}
@@ -41,6 +43,7 @@ class Raidcom:
         self.undodefs = []
         self.parser = Raidcomparser(self,log=self.log)
         self.updatestats = Raidcomstats(self,log=self.log)
+        self.login()
         self.identify()
         self.limitations()
 
@@ -84,7 +87,13 @@ class Raidcom:
         return cmdreturn
 
     def lockresource(self, **kwargs) -> object:
-        cmd = f"{self.path}raidcom lock resource -I{self.instance} -s {self.serial}"
+        '''
+        raidcom lock resource -time <seconds>\n
+        arguments\n
+        time = <seconds>\n
+        '''
+        time = ('',f"-time {kwargs.get('time')}")[kwargs.get('time') is not None]
+        cmd = f"{self.path}raidcom lock resource {time} -I{self.instance} -s {self.serial}"
         undocmd = ['{}raidcom unlock resource -I{} -s {}'.format(self.path,self.instance,self.serial)]
         return self.execute(cmd,undocmd,**kwargs)
 
@@ -123,6 +132,14 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
+    def login(self,**kwargs):
+        if self.username and self.password:
+            cmd = f"{self.path}raidcom -login {self.username} {self.password} -I{self.instance}"
+            return self.execute(cmd,**kwargs)
+
+    def logout(self,**kwargs):
+        cmd = f"{self.path}raidcom -logout -I{self.instance} -s {self.serial}"
+        return self.execute(cmd,**kwargs)
 
     def limitations(self):
         for limitation in Storagecapabilities.default_limitations:
@@ -378,6 +395,11 @@ class Raidcom:
         return cmdreturn
 
     def getpool(self, key: str=None, view_keyname: str='_pools', **kwargs) -> object:
+        '''
+        pools = getpool()\n
+        pools = getpool(datafilter={'POOL_NAME':'MyPool'})\n
+        pools = getpool(datafilter={'Anykey_when_val_is_callable':lambda a : a['PT'] == 'HDT' or a['PT'] == 'HDP'})\n
+        '''
         
         keyswitch = ("",f"-key {key}")[key is not None]
         cmd = f"{self.path}raidcom get pool -I{self.instance} -s {self.serial} {keyswitch}"
@@ -638,7 +660,8 @@ class Raidcom:
             self.parser.getcommandstatus(getcommandstatus)
             auto_ldev_id = getcommandstatus.data[0]['ID']
             undocmd = f"{self.path}raidcom delete ldev -ldev_id {auto_ldev_id} -pool {poolid} -capacity {capacity} {ucmdparam} -I{self.instance} -s {self.serial}"
-            undodef = { 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }.update(ucmddict)}
+            #undodef = { 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }.update(ucmddict)}
+            undodef = { 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }}
             cmdreturn.undocmds.insert(0,undocmd)
             cmdreturn.undodefs.insert(0,undodef)
             echo = f'echo "Executing: {undocmd}"'
@@ -685,7 +708,7 @@ class Raidcom:
         print("returning from populateundo")
         return undocmds,undodefs,ldev
             
-    def deleteldev(self, ldev_id: str, **kwargs) -> object:
+    def XXdeleteldev(self, ldev_id: str, **kwargs) -> object:
         print(f"deleteldev {ldev_id}, call deleteldev_undo")
         undocmds,undodefs,ldev = self.deleteldev_undo(ldev_id=ldev_id)
         print(f"after deleteldev_undo")
@@ -696,6 +719,11 @@ class Raidcom:
         cmdreturn.view = ldev.view
         cmdreturn.data = ldev.data
         #self.getcommandstatus()
+        return cmdreturn
+
+    def deleteldev(self,ldev_id: str, **kwargs) -> object:
+        cmd = f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
         return cmdreturn
 
     def addresource(self,resource_name: str,virtualSerialNumber: str=None,virtualModel: str=None, **kwargs) -> object:
@@ -944,7 +972,7 @@ class Raidcom:
 
     def modifyldevname(self,ldev_id: str,ldev_name: str, **kwargs) -> object:
         #self.resetcommandstatus()
-        cmd = f"{self.path}raidcom modify ldev -ldev_id {ldev_id} -ldev_name '{ldev_name}' -I{self.instance} -s {self.serial}"
+        cmd = f'{self.path}raidcom modify ldev -ldev_id {ldev_id} -ldev_name "{ldev_name}" -I{self.instance} -s {self.serial}'
         cmdreturn = self.execute(cmd,raidcom_asyncronous=True,**kwargs)
         #self.getcommandstatus()
         return cmdreturn
@@ -954,8 +982,8 @@ class Raidcom:
         '''
         Not fetching the previous capacity saving setting and defaulting to disable for undo.
         '''
-        cmd = f"{self.path}raidcom modify ldev -ldev_id '{ldev_id}' -capacity_saving {capacity_saving} -I{self.instance} -s {self.serial}"
-        undocmd = [f"{self.path}raidcom modify ldev -ldev_id '{ldev_id}' -capacity_saving {undo_saving} -I{self.instance} -s {self.serial}"]
+        cmd = f"{self.path}raidcom modify ldev -ldev_id {ldev_id} -capacity_saving {capacity_saving} -I{self.instance} -s {self.serial}"
+        undocmd = [f"{self.path}raidcom modify ldev -ldev_id {ldev_id} -capacity_saving {undo_saving} -I{self.instance} -s {self.serial}"]
         cmdreturn = self.execute(cmd,undocmd,raidcom_asyncronous=True,**kwargs)
         #self.getcommandstatus()
         return cmdreturn
@@ -1093,6 +1121,13 @@ class Raidcom:
         cmd = f"{self.path}raidcom get host_grp -port {port} -resource {resource_group_id} -key detail -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         self.parser.gethostgrp_key_detail(cmdreturn)
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        return cmdreturn
+
+    def getquorum(self, view_keyname='_quorum', **kwargs) -> object:
+        cmd = f"{self.path}raidcom get quorum -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getquorum(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
@@ -1276,7 +1311,15 @@ class Raidcom:
         cmdreturn.view = dict(sorted(cmdreturn.view.items()))
         return cmdreturn
 
-
+    def obfuscatepwd(self,cmd):
+        if re.search(r' -login ',cmd):
+            c = cmd.split()
+            c[2] = "******"
+            c[3] = "******"
+            return ' '.join(c)
+        else:
+            return cmd
+        
     def execute(self,cmd,undocmds=[],undodefs=[],expectedreturn=0,**kwargs) -> object:
 
         cmdreturn = Cmdview(cmd=cmd)
@@ -1286,7 +1329,7 @@ class Raidcom:
             return cmdreturn
         if kwargs.get('raidcom_asyncronous'):
             self.resetcommandstatus()
-        self.log.debug(f"Executing: {cmd}")
+        self.log.debug(f"Executing: {self.obfuscatepwd(cmd)}")
         #self.log.info(f"Expecting return code {expectedreturn}")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
         cmdreturn.stdout, cmdreturn.stderr = proc.communicate()
@@ -1298,7 +1341,7 @@ class Raidcom:
             self.log.error("Stdout > "+cmdreturn.stdout)
             self.log.error("Stderr > "+cmdreturn.stderr)
             message = {'return':proc.returncode,'stdout':cmdreturn.stdout, 'stderr':cmdreturn.stderr }
-            raise Exception(f"Unable to execute Command '{cmd}'. Command dump > {message}")
+            raise Exception(f"Unable to execute Command '{self.obfuscatepwd(cmd)}'. Command dump > {message}")
 
         for undocmd in undocmds: 
             echo = f'echo "Executing: {undocmd}"'

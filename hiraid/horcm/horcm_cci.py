@@ -10,6 +10,8 @@ from glob import glob
 from string import Template
 from datetime import datetime
 from ..historutils.historutils import Storcapunits as storagecaps
+from ..cmdview import Cmdview
+
 
 
 try:
@@ -59,11 +61,61 @@ class Cci():
         self.timeout = 3000
         self.path = path
         self.cciextension = cciextension
+        self.undocmds = []
+
+    def now(self,format='%d-%m-%Y_%H.%M.%S'):
+        return datetime.now().strftime(format)
+    
+    def raidqry(self, inst: int):
+        cmd = '{}raidqry -l -I{}'.format(self.path,inst)
+        stdout, stderr, cmdreturn = self.execute(cmd)
+        cmdreturn = Cmdview("raidqry")
+        cmdreturn.rawdata = stdout
+        self.parse_raidqry(cmdreturn)
+        return cmdreturn
+
+
+    def parse_raidqry(self,cmdreturn):
+        
+        rawdata = [row.strip() for row in list(filter(None,cmdreturn.rawdata.split('\n')))]
+        header = rawdata.pop(0)
+        cmdreturn.headers = header.split()
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                serial = datadict['Serial#']
+                cmdreturn.view[serial] = datadict
+
+        for line in rawdata:
+            row = line.split()
+            cmdreturn.data.append(dict(zip(cmdreturn.headers, row)))
+
+        createview(cmdreturn)
+        return cmdreturn
+
+    def XXXXparse_pairdisplay(self,pairdisplay: list) -> dict:
+        '''
+        Returns dictionary of parsed pairdisplay:
+        { Group: { PairVol: { L/R: { heading:data } } } }
+        '''
+        headings = pairdisplay.pop(0).split()
+        view = { 'pairs': {} }
+        for line in pairdisplay:
+            sline = line.split()
+            if len(sline) != len(headings): raise("header and data length mismatch")
+            data = {head:item for item,head in zip(sline,headings)}
+            view['pairs'][data['Group']] = view['pairs'].get(data['Group'],{})
+            view['pairs'][data['Group']][data['PairVol']] = view['pairs'][data['Group']].get(data['PairVol'],{})
+            view['pairs'][data['Group']][data['PairVol']][data['L/R']] = data
+
+        return view
+
+
 
     def return_used_horcm_insts(self):
         with cd(self.horcm_dir) as horcm_dir:
             horcm_files = glob('horcm[0-9]*.conf')
-        self.used_insts = [ int(horcm.strip().replace('horcm','').replace('.conf','')) for horcm in horcm_files]
+        self.used_insts = sorted([ int(horcm.strip().replace('horcm','').replace('.conf','')) for horcm in horcm_files])
         return self.used_insts
 
     def find_free_horcm_partners(self,start: int=0, end: int=500, local_inst: str='even') -> list:
@@ -141,6 +193,23 @@ class Cci():
         
         return horcm_dict
 
+    def create_minimal_horcm(self,horcm_detail: dict):
+        horcm_instance = horcm_detail['instance']
+        detail = {
+            'date': self.now(),
+            'instance': horcm_detail['instance'],
+            'HORCM_CMD': '\n'.join(horcm_detail['HORCM_CMD'])
+        }
+        try:
+            from .horcm_template import minimal_template
+        except:
+            from horcm_template import minimal_template
+        horcm_template = Template(minimal_template)
+        
+        horcm_content = horcm_template.substitute(detail)
+        horcm_file = f"{self.horcm_dir}{os.sep}horcm{horcm_instance}.conf"
+        self.backupfile(horcm_file)
+        self.writehorcmfile(horcm_file,horcm_content)
 
     def create_horcm(self,horcm_detail: dict):
         horcm_instance = horcm_detail['instance']
@@ -190,9 +259,67 @@ class Cci():
             os.rename(fqfile,fqfilebackup)
             self.log.info('Backed up file {} to {}'.format(fqfile,fqfilebackup))
         except FileNotFoundError:
-            self.log.warning('File does not exist \'{}\', backup not required'.format(fqfile))
+            self.log.warn('File does not exist \'{}\', backup not required'.format(fqfile))
         except Exception as e:
             raise Exception('Unable to backup files \'{}\''.format(e))
+
+    def horcmshutdown(self,inst):
+        self.log.info(f'Shutdown horcm instance {inst}')
+        cmd = f'{self.path}horcmshutdown{self.cciextension} {inst}'
+        return self.nexecute(cmd)
+    
+    def horcmstart(self,inst):
+        self.log.info(f'Start horcm instance {inst}')
+        cmd = f'{self.path}horcmstart{self.cciextension} {inst}'
+        return self.nexecute(cmd)
+    
+    def removehorcmfile(self,inst):
+        self.log.info(f'Remove horcm file {self.horcm_dir}{os.sep}horcm{inst}.conf')
+        os.remove(f'{self.horcm_dir}{os.sep}horcm{inst}.conf')
+
+    def nexecute(self,cmd,undocmds=[],acceptable_returns=[0],**kwargs) -> object:
+
+        cmdreturn = Cmdview(cmd=cmd)
+        cmdreturn.expectedreturn = acceptable_returns
+
+        self.log.info(f"Executing: {cmd}")
+        self.log.debug(f"Acceptable return codes {acceptable_returns}")
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
+        cmdreturn.stdout, cmdreturn.stderr = proc.communicate()
+        cmdreturn.returncode = proc.returncode
+        cmdreturn.executed = True
+        
+        if proc.returncode and proc.returncode not in acceptable_returns:
+            self.log.error("Return > "+str(proc.returncode))
+            self.log.error("Stdout > "+cmdreturn.stdout)
+            self.log.error("Stderr > "+cmdreturn.stderr)
+            message = {'return':proc.returncode,'stdout':cmdreturn.stdout, 'stderr':cmdreturn.stderr }
+            raise Exception(f"Unable to execute Command '{self.obfuscatepwd(cmd)}'. Command dump > {message}")
+        
+        for undocmd in undocmds: 
+            echo = f'echo "Executing: {undocmd}"'
+            self.undocmds.insert(0,undocmd)
+            self.undocmds.insert(0,echo)
+            cmdreturn.undocmds.insert(0,undocmd)
+        
+        return cmdreturn
+    '''
+    def execute(self,cmd,expectedreturn=0):
+        self.log.info(f"Executing: {cmd}")
+        self.log.debug(f"Expecting return code {expectedreturn}")
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
+        stdout, stderr = proc.communicate()
+        self.log.info(f"Return Code: {proc.returncode}")
+  
+        if proc.returncode and proc.returncode != expectedreturn and expectedreturn is not None:
+            self.log.error("Return > "+str(proc.returncode))
+            self.log.error("Stdout > "+stdout.strip())
+            self.log.error("Stderr > "+stderr.strip())
+            message = {'return':proc.returncode,'stdout':stdout, 'stderr':stderr }
+            raise Exception('Unable to execute Command "{}". Command dump > {}'.format(cmd,message))
+    
+        return stdout, stderr, proc.returncode
+    '''
 
     def restart_horcm_inst(self,inst):
         

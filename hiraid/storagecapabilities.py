@@ -20,6 +20,10 @@
 #
 # 17/05/2022    v1.1.01     Added support for VSP G
 #
+# 25/05/2023    v1.1.02     Added G800 ( M800H )
+#
+# 26/05/2023    v1.1.03     Added G200, G400, G600
+#
 # -----------------------------------------------------------------------------------------------------------------------------------
 
 class Storagecapabilities:
@@ -30,7 +34,12 @@ class Storagecapabilities:
     }
 
     limitations = {
-        "M700": { "maxldevid": 16383
-            }
-        }
+        "M700":     { "maxldevid": 16383, "type": "G800" },
+        "M800H":    { "maxldevid": 16383, "type": "G800" },
+        "M8H":      { "maxldevid": 16383, "type": "G800" },
+        "M8S":      { "maxldevid": 2048,  "type": "G200" },
+        "M800S":    { "maxldevid": 2048,  "type": "G200" },
+        "M800M":    { "maxldevid": 4096,  "type": "G400" },
+        "M8M":      { "maxldevid": 4096,  "type": "G400" }
+    }
 

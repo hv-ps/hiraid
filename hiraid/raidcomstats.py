@@ -82,8 +82,8 @@ class Raidcomstats():
                 counters['pool_types'] = counters.get('pool_types',{})
                 counters['pool_types'][pt] = counters['pool_types'].get(pt,{ 'count':0, 'Available(MB)':0, 'Capacity(MB)':0 })
                 counters['pool_types'][pt]['count'] += 1
-                counters['pool_types'][pt]['Available(MB)'] += int(self.views['_pools'][poolid]['Available(MB)'])
-                counters['pool_types'][pt]['Capacity(MB)'] += int(self.views['_pools'][poolid]['Capacity(MB)'])
+                #counters['pool_types'][pt]['Available(MB)'] += int(self.views['_pools'][poolid]['Available(MB)'])
+                #counters['pool_types'][pt]['Capacity(MB)'] += int(self.views['_pools'][poolid]['Capacity(MB)'])
             if self.views['_pools'][poolid].get('Available(MB)'):
                 for cap in ['Available(MB)','Capacity(MB)']:
                     counters[cap] = counters.get(cap,0)

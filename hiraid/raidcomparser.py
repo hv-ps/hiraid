@@ -924,6 +924,22 @@ class Raidcomparser:
                 cmdreturn.view[port]['_GIDS'][gid][head] = value
 
         return cmdreturn
+    
+    def getquorum(self,cmdreturn: object,datafilter: dict={}) -> object:
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'quorumcount':0 }
+        quorum_prefilter = [dict(map(str.strip, row.split(':', 1)) for row in list(filter(None,quorum.split('\n')))) for quorum in cmdreturn.stdout.split('\n\n')]
+        cmdreturn.data = list(filter(lambda q: self.applyfilter(q,datafilter),quorum_prefilter))
+
+        def createview(data):
+            for datadict in data:
+                qrdid = datadict['QRDID']
+                cmdreturn.view[qrdid] = cmdreturn.view.get(qrdid,datadict)
+                cmdreturn.stats['quorumcount'] += 1
+
+        createview(cmdreturn.data)
+        return cmdreturn
 
 
     def gethostgrpkeyhostgrprgid(self,cmdreturn: object,resourcegroupid):
