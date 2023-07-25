@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.30"
+version = "v1.0.31"
 
 class Raidcom:    
 
@@ -221,7 +221,8 @@ class Raidcom:
         '''
         cmd = f"{self.path}raidcom get port -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        #self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        self.parser.getport(cmdreturn,**kwargs)
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
             self.updateview(self.data,{view_keyname:cmdreturn.data})

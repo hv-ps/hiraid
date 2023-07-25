@@ -34,12 +34,12 @@ class Storagecapabilities:
     }
 
     limitations = {
-        "M700":     { "maxldevid": 16383, "type": "G800" },
-        "M800H":    { "maxldevid": 16383, "type": "G800" },
-        "M8H":      { "maxldevid": 16383, "type": "G800" },
-        "M8S":      { "maxldevid": 2048,  "type": "G200" },
-        "M800S":    { "maxldevid": 2048,  "type": "G200" },
-        "M800M":    { "maxldevid": 4096,  "type": "G400" },
-        "M8M":      { "maxldevid": 4096,  "type": "G400" }
+        "M700":     { "maxldevid": 16383, "type": "HUSVM" },
+        "M800H":    { "maxldevid": 16383, "type": "G800"  },
+        "M8H":      { "maxldevid": 16383, "type": "G800"  },
+        "M8S":      { "maxldevid": 2047,  "type": "G200"  },
+        "M800S":    { "maxldevid": 2047,  "type": "G200"  },
+        "M800M":    { "maxldevid": 4095,  "type": "G400,G600"  },
+        "M8M":      { "maxldevid": 4095,  "type": "G400,G600"  }
     }
 

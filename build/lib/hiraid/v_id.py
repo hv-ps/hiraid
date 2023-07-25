@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -----------------------------------------------------------------------------------------------------------------------------------
-# Version v1.1.02
+# Version v1.1.03
 # -----------------------------------------------------------------------------------------------------------------------------------
 #
 # License Terms
@@ -22,17 +22,19 @@
 #
 # 09/01/2023    v1.1.02     Updated model list
 #
+# 23/06/2023    v1.1.03     Updated model list
+#
 # -----------------------------------------------------------------------------------------------------------------------------------
 
 class VId:
-
+    version = "v1.1.03"
     models = {
                 "R7"        :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
-                # "-"         :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
-                "M700"      :{ "v_id":"M700",   "type":"M700",     "model":["HUSVM"] },
+                #"-"         :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
+                "M700"      :{ "v_id":"M700",   "type":"M700",      "model":["HUSVM"] },
                 "R8"        :{ "v_id":"R8",     "type":"R800",      "model":["VSP G1000"] },
-                "M8M"       :{ "v_id":"M800M",  "type":"M800M",     "model":["VSP G400","VSP G600"] },
-                "M8S"       :{ "v_id":"M8M",    "type":"M800S",     "model":["VSP G200"] },
+                "M8S"       :{ "v_id":"M8S",    "type":"M800S",     "model":["VSP G200"] },
+                "M8M"       :{ "v_id":"M8M",    "type":"M800M",     "model":["VSP G400","VSP G600"] },
                 "M8H"       :{ "v_id":"M8H",    "type":"M800H",     "model":["VSP G800"] },
                 "M850S1"    :{ "v_id":"M850S1", "type":"M850S1",    "model":["VSP G350"] },
                 "M850S2"    :{ "v_id":"M850S2", "type":"M850S2",    "model":["VSP G370"] },
@@ -43,16 +45,17 @@ class VId:
                 "M850S2F"   :{ "v_id":"M850S2F","type":"M850S2F",   "model":["VSP F370"] },
                 "M850H"     :{ "v_id":"M850H",  "type":"M850H",     "model":["VSP G900"] },
                 "R9F"       :{ "v_id":"R9F",    "type":"R900F",     "model":["VSP G5100","VSP G5500"] },
-                "RH10HF"    :{ "v_id":"RH10HF", "type":"R900F",     "model":["VSP G5200","VSP G5600"] },
+                "RH10HG"    :{ "v_id":"RH10HG", "type":"R900F",     "model":["VSP G5200"] },
+                "RH10HF"    :{ "v_id":"RH10HF", "type":"R900F",     "model":["VSP G5600"] },
                 "RH10MHF"   :{ "v_id":"RH10MHF","type":"E1090",     "model":["VSP E1090"] },
                 "R9G"       :{ "v_id":"R9G",    "type":"R900G",     "model":["VSP G5500H"] },
                 "M9S"       :{ "v_id":"M9S",    "type":"E590",      "model":["VSP E590"] },
                 "VSP"       :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
-                "HUSVM"     :{ "v_id":"M700",   "type":"M700",     "model":["HUSVM"] },
+                "HUSVM"     :{ "v_id":"M700",   "type":"M700",      "model":["HUSVM"] },
                 "VSP G1000" :{ "v_id":"R8",     "type":"R800",      "model":["VSP G1000"] },
-                "VSP G200"  :{ "v_id":"M8M",    "type":"M800S",     "model":["VSP G200"] },
-                "VSP G400"  :{ "v_id":"M800M",  "type":"M800M",     "model":["VSP G400"] },
-                "VSP G600"  :{ "v_id":"M800M",  "type":"M800M",     "model":["VSP G600"] },
+                "VSP G200"  :{ "v_id":"M8S",    "type":"M800S",     "model":["VSP G200"] },
+                "VSP G400"  :{ "v_id":"M8M",    "type":"M800M",     "model":["VSP G400"] },
+                "VSP G600"  :{ "v_id":"M8M",    "type":"M800M",     "model":["VSP G600"] },
                 "VSP G800"  :{ "v_id":"M8H",    "type":"M800H",     "model":["VSP G800"] },
                 "VSP G350"  :{ "v_id":"M850S1", "type":"M850S1",    "model":["VSP G350"] },
                 "VSP G370"  :{ "v_id":"M850S2", "type":"M850S2",    "model":["VSP G370"] },
@@ -60,13 +63,15 @@ class VId:
                 "VSP G900"  :{ "v_id":"M850H",  "type":"M850H",     "model":["VSP G900"] },
                 "VSP G5100" :{ "v_id":"R9F",    "type":"R900F",     "model":["VSP G5100"] },
                 "VSP G5500" :{ "v_id":"R9F",    "type":"R900F",     "model":["VSP G5500"] },
-                "VSP G5200" :{ "v_id":"RH10HF", "type":"R900F",     "model":["VSP G5200"] },
+                "VSP G5200" :{ "v_id":"RH10HG", "type":"R900F",     "model":["VSP G5200"] },
                 "VSP G5600" :{ "v_id":"RH10HF", "type":"R900F",     "model":["VSP G5600"] },
                 "VSP G5500H":{ "v_id":"R9G",    "type":"R900G",     "model":["VSP G5500H"] },
                 "VSP E590"  :{ "v_id":"M9S",    "type":"E590",      "model":["VSP E590"] },
                 "VSP E1090" :{ "v_id":"RH10MHF","type":"E1090",     "model":["VSP E1090"] },
                 "VSP E790"  :{ "v_id":"M9M",    "type":"E790",      "model":["VSP E790"] },
                 "M9M"       :{ "v_id":"M9M",    "type":"E790",      "model":["VSP E790"] },
+                "M7"        :{ "v_id":"M7",     "type":"M700",      "model":["HUSVM"] },
+                "R9F"       :{ "v_id":"R9F",    "type":"R900F",     "model":["VSP G5600"] }
             }
     micro_ver = {
                 "70"        :{ "v_id":"R7",     "type":"R700",      "model":["VSP"] },
