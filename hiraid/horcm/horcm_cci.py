@@ -646,7 +646,7 @@ class Cci():
 
 if __name__ == "__main__":
 
-    horcm_manager = horcmInstanceManager()
+    horcm_manager = Cci()
     now = datetime.now().strftime('%d-%m-%Y_%H.%M.%S')
 
     manual_horcm_dict = {

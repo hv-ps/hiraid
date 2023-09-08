@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.30"
+version = "v1.0.32"
 
 class Raidcom:    
 
@@ -221,7 +221,8 @@ class Raidcom:
         '''
         cmd = f"{self.path}raidcom get port -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
-        self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        #self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        self.parser.getport(cmdreturn,**kwargs)
         if update_view:
             self.updateview(self.views,{view_keyname:cmdreturn.view})
             self.updateview(self.data,{view_keyname:cmdreturn.data})
@@ -723,7 +724,7 @@ class Raidcom:
 
     def deleteldev(self,ldev_id: str, **kwargs) -> object:
         cmd = f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
-        cmdreturn = self.execute(cmd,**kwargs)
+        cmdreturn = self.execute(cmd,raidcom_asyncronous=True,**kwargs)
         return cmdreturn
 
     def addresource(self,resource_name: str,virtualSerialNumber: str=None,virtualModel: str=None, **kwargs) -> object:
@@ -973,7 +974,7 @@ class Raidcom:
     def modifyldevname(self,ldev_id: str,ldev_name: str, **kwargs) -> object:
         #self.resetcommandstatus()
         cmd = f'{self.path}raidcom modify ldev -ldev_id {ldev_id} -ldev_name "{ldev_name}" -I{self.instance} -s {self.serial}'
-        cmdreturn = self.execute(cmd,raidcom_asyncronous=True,**kwargs)
+        cmdreturn = self.execute(cmd,raidcom_asyncronous=False,**kwargs)
         #self.getcommandstatus()
         return cmdreturn
 

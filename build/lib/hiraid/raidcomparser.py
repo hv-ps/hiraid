@@ -268,8 +268,12 @@ class Raidcomparser:
             kwargs['ldevout'][kwargs['key']] = l[0]
             if len(l) > 1:
                 kwargs['ldevout'][l[1]] = l[3]
+            
+        def RSGID(**kwargs):
+            kwargs['ldevout'][kwargs['key']] = kwargs['value']
+            kwargs['ldevout']['RS_GROUP'] = self.raidcom.views['_resource_groups'][kwargs['value']]['RS_GROUP']
 
-        specialfields = {'LDEV': LDEV, 'PORTs': PORTs,'VOL_ATTR': VOL_ATTR, 'VOL_Capacity(BLK)': VOL_Capacity, 'Used_Block(BLK)': Used_Block }
+        specialfields = {'LDEV': LDEV, 'PORTs': PORTs,'VOL_ATTR': VOL_ATTR, 'VOL_Capacity(BLK)': VOL_Capacity, 'Used_Block(BLK)': Used_Block, 'RSGID': RSGID }
         for ldev in ldevdata:
             ldevout = {}
             for k, v in ldev.items():
