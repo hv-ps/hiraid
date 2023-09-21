@@ -1168,7 +1168,7 @@ class Raidcom:
         
         for portgid in portgids: self.checkportgid(portgid)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.gethbawwn,port=portgid,update_view=False): portgid for portgid in portgids}
+            future_out = { executor.submit(self.gethbawwn,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)
@@ -1189,7 +1189,7 @@ class Raidcom:
         
         for portgid in portgids: self.checkportgid(portgid)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getlun,port=portgid,update_view=False): portgid for portgid in portgids}
+            future_out = { executor.submit(self.getlun,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)
@@ -1208,7 +1208,7 @@ class Raidcom:
         '''
         cmdreturn = CmdviewConcurrent()
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getldev,ldev_id=ldev_id,update_view=False): ldev_id for ldev_id in ldev_ids}
+            future_out = { executor.submit(self.getldev,ldev_id=ldev_id,update_view=False,**kwargs): ldev_id for ldev_id in ldev_ids}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)
@@ -1228,7 +1228,7 @@ class Raidcom:
         cmdreturn = CmdviewConcurrent()
         for port in ports: self.checkport(port)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getportlogin,port=port,update_view=False): port for port in ports}
+            future_out = { executor.submit(self.getportlogin,port=port,update_view=False,**kwargs): port for port in ports}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)

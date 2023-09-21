@@ -1208,7 +1208,7 @@ class Raidcom:
         '''
         cmdreturn = CmdviewConcurrent()
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getldev,ldev_id=ldev_id,update_view=False): ldev_id for ldev_id in ldev_ids}
+            future_out = { executor.submit(self.getldev,ldev_id=ldev_id,update_view=False,**kwargs): ldev_id for ldev_id in ldev_ids}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)
