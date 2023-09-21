@@ -11,9 +11,10 @@ The primary purpose of this library is to underpin the Hitachi Vantara opensourc
 > from hiraid.raidcom import Raidcom  
 > storage_serial = 53511  
 > horcm_instance = 0  
-> storage = Raidcom(storage_serial,0)  
+> storage = Raidcom(storage_serial,horcm_instance)  
 > ports = storage.getport()  
 > print(json.dumps(ports.view,indent=4))  
+> print(ports.data)
 > print(json.dumps(ports.stats))  
 
 ### Index your host groups, luns and associated ldevs
