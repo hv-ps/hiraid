@@ -294,7 +294,7 @@ class Cci():
             self.log.error("Stdout > "+cmdreturn.stdout)
             self.log.error("Stderr > "+cmdreturn.stderr)
             message = {'return':proc.returncode,'stdout':cmdreturn.stdout, 'stderr':cmdreturn.stderr }
-            raise Exception(f"Unable to execute Command '{self.obfuscatepwd(cmd)}'. Command dump > {message}")
+            raise Exception(f"Unable to execute Command '{cmd}'. Command dump > {message}")
         
         for undocmd in undocmds: 
             echo = f'echo "Executing: {undocmd}"'
