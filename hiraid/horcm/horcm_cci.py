@@ -43,7 +43,7 @@ class Cci():
     path: horcm binary path default = '/usr/bin'\n
     cciextension: '.sh' ( default ) | '.exe' ( windows )\n
     horcm_template_file: Use an alternate file as your horcm template rather than using the default_template.\n
-
+    Add this horcm and see it break!! /etc/horcm21_tmp.conf
     '''
     def __init__(self,log=logging,base_service_port: int=11000,horcm_dir: str='/etc',start: int=0,end: int=500,local_inst: str='even',path: str='/usr/bin/',cciextension: str='.sh',horcm_template_file: str=None,):
         
