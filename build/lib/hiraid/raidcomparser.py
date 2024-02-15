@@ -1,6 +1,6 @@
 #!/usr/bin/python3.6
 # -----------------------------------------------------------------------------------------------------------------------------------
-# Version v1.1.02
+# Version v1.1.03
 # -----------------------------------------------------------------------------------------------------------------------------------
 #
 # License Terms
@@ -21,6 +21,8 @@
 # 24/01/2020    v1.1.01     Add functions getportlogin getrcu - CM
 #
 # 10/08/2022    v1.1.02     Bug fix, gethbawwn broken view missing wwns - DC
+#
+# 11/02/2023    v1.1.03     Added getdrive - DC
 #
 # -----------------------------------------------------------------------------------------------------------------------------------
 
@@ -945,7 +947,78 @@ class Raidcomparser:
         createview(cmdreturn.data)
         return cmdreturn
 
+    '''
+     def getparitygrp(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
 
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'parity_grp_count':0 }
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                #PHG GROUP STS CM IF MP# PORT   WWN                 PR LUN PHS  Serial# PRODUCT_ID LB PM DM QD TO(s) PBW(
+                group = datadict['GROUP']
+                cmdreturn.view[group] = datadict
+                cmdreturn.stats['parity_grp_count'] += 1
+
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
+        return cmdreturn
+    '''
+
+    '''
+    def getport(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
+    
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'portcount':0 }
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                port = datadict['PORT']
+                if port not in cmdreturn.view:
+                    cmdreturn.view[port] = copy.deepcopy(datadict)
+                    cmdreturn.view[port]['ATTR'] = []
+                    cmdreturn.stats['portcount'] += 1
+                cmdreturn.view[port]['ATTR'].append(datadict['ATTR'])
+
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            row[0] = re.sub(r'\d+$','',row[0])
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+            
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
+        return cmdreturn
+    '''
+
+    def getdrive(self,cmdreturn: object,datafilter: dict={}) -> object:
+
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'drivecount':0 }
+        
+        def createview(data):
+            for datadict in data:
+                group = datadict['GROUP']
+                location = datadict['LOCATION']
+                cmdreturn.view[group] = cmdreturn.view.get(group,{'_DRIVES':{}})
+                cmdreturn.view[group]['_DRIVES'][location] = datadict
+                cmdreturn.stats['drivecount'] += 1 
+
+        prefilter = []
+        for line in cmdreturn.rawdata:
+            row = line.split()
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
+
+        cmdreturn.data = list(filter(lambda l: self.applyfilter(l,datafilter),prefilter))
+        createview(cmdreturn.data)
+
+        return cmdreturn
+    
     def gethostgrpkeyhostgrprgid(self,cmdreturn: object,resourcegroupid):
 
         self.initload(cmdreturn)

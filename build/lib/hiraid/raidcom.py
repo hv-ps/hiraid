@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.32"
+version = "v1.0.33"
 
 class Raidcom:    
 
@@ -1132,6 +1132,33 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
+    #def getdrive(self, view_keyname='_drives', **kwargs) -> object:
+    def getdrive(self,view_keyname: str='_parity_grp', update_view=True, **kwargs) -> object:
+        '''
+        raidcom get drive\n
+        examples:\n
+        drives = getparitygrp()\n
+        drives = getparitygrp(datafilter={'R_TYPE':'14D+2P'})\n
+        drives = getparitygrp(datafilter={'Anykey_when_val_is_callable':lambda a : a['DRIVE_TYPE'] != 'DKS5E-J900SS'})\n\n
+        Returns Cmdview():\n
+        parity_grps.serial\n
+        parity_grps.data\n
+        parity_grps.view\n
+        parity_grps.cmd\n
+        parity_grps.returncode\n
+        parity_grps.stderr\n
+        parity_grps.stdout\n
+        parity_grps.stats\n
+        '''
+        cmd = f"{self.path}raidcom get drive -key opt -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getdrive(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        if update_view:
+            self.updateview(self.views,{view_keyname:cmdreturn.view})
+            #self.updatestats.portcounters()
+        
+        return cmdreturn        
+
     '''
     concurrent_{functions}
     '''
@@ -1168,7 +1195,7 @@ class Raidcom:
         
         for portgid in portgids: self.checkportgid(portgid)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.gethbawwn,port=portgid,update_view=False): portgid for portgid in portgids}
+            future_out = { executor.submit(self.gethbawwn,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)
@@ -1189,7 +1216,7 @@ class Raidcom:
         
         for portgid in portgids: self.checkportgid(portgid)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getlun,port=portgid,update_view=False): portgid for portgid in portgids}
+            future_out = { executor.submit(self.getlun,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)
@@ -1228,7 +1255,7 @@ class Raidcom:
         cmdreturn = CmdviewConcurrent()
         for port in ports: self.checkport(port)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getportlogin,port=port,update_view=False): port for port in ports}
+            future_out = { executor.submit(self.getportlogin,port=port,update_view=False,**kwargs): port for port in ports}
             for future in concurrent.futures.as_completed(future_out):
                 cmdreturn.stdout.append(future.result().stdout)
                 cmdreturn.stderr.append(future.result().stderr)

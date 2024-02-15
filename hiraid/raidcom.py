@@ -19,7 +19,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 
 
-version = "v1.0.32"
+version = "v1.0.33"
 
 class Raidcom:    
 
@@ -1131,6 +1131,32 @@ class Raidcom:
         self.parser.getquorum(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
+
+    def getdrive(self,view_keyname: str='_parity_grp', update_view=True, **kwargs) -> object:
+        '''
+        raidcom get drive\n
+        examples:\n
+        drives = getparitygrp()\n
+        drives = getparitygrp(datafilter={'R_TYPE':'14D+2P'})\n
+        drives = getparitygrp(datafilter={'Anykey_when_val_is_callable':lambda a : a['DRIVE_TYPE'] != 'DKS5E-J900SS'})\n\n
+        Returns Cmdview():\n
+        parity_grps.serial\n
+        parity_grps.data\n
+        parity_grps.view\n
+        parity_grps.cmd\n
+        parity_grps.returncode\n
+        parity_grps.stderr\n
+        parity_grps.stdout\n
+        parity_grps.stats\n
+        '''
+        cmd = f"{self.path}raidcom get drive -key opt -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getdrive(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
+        if update_view:
+            self.updateview(self.views,{view_keyname:cmdreturn.view})
+            #self.updatestats.portcounters()
+        
+        return cmdreturn        
 
     '''
     concurrent_{functions}
