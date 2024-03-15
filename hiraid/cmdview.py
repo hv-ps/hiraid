@@ -17,8 +17,9 @@ class Cmdview():
         self.actions = {}
 
 class CmdviewConcurrent():
-    def __init__(self,returncode=[],stdout=[],stderr=[]):
-        self.returncode = returncode
+    def __init__(self,returncodes=[],stdout=[],stderr=[]):
+        self.returncodes = returncodes
+        self.returncode = 0
         self.stdout = stdout
         self.stderr = stderr
         self.view = {}

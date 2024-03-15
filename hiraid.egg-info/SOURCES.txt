@@ -12,6 +12,7 @@ hiraid/customhostviews.py
 hiraid/customviews.py
 hiraid/gadedgemigration.py
 hiraid/gadmigration.py
+hiraid/hiraidexception.py
 hiraid/hostlib.py
 hiraid/hostviews.py
 hiraid/hvexception.py

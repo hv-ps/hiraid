@@ -24,6 +24,8 @@
 #
 # 11/02/2023    v1.1.03     Added getdrive - DC
 #
+# 08/03/2024    v1.1.04     Updated gethostgrp_key_detail to allow gethostgrp to be dropped - DC
+#
 # -----------------------------------------------------------------------------------------------------------------------------------
 
 import re
@@ -155,6 +157,45 @@ class Raidcomparser:
         createview(cmdreturn)
         self.altview(cmdreturn,altview)
         return cmdreturn
+
+    def concurrent_getresource(self, cmdreturns: list, datafilter: dict={}, altview: Callable=None, **kwargs ) -> dict:
+
+        newcmdreturn = Cmdview("concurrent_getresource")
+        newcmdreturn.rawdata = []
+        newcmdreturn.stats = { 'resource_group_count':0 }
+        prefilter_dict = {}
+        precombine = []
+
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                #self.log.info(datadict)
+                rgid = datadict['RGID']
+                cmdreturn.view[rgid] = datadict
+                cmdreturn.stats['resource_group_count'] += 1
+
+        for cmdreturn in cmdreturns:
+            print(f"{vars(cmdreturn)}\n\n")
+            #newcmdreturn.rawdata.append(cmdreturn.rawdata)
+            prefilter = []
+            self.initload(cmdreturn)
+            
+            for line in cmdreturn.rawdata:
+                row = line.split()
+                for item in row:
+                    precombine.append(dict(zip(cmdreturn.headers, row)))
+        
+        for r in precombine:
+            rgid = r['RGID']
+            prefilter_dict[rgid] = prefilter_dict.get(rgid,{})
+            for k, v in r.items():
+                prefilter_dict[rgid][k] = v
+
+        prefilter = [value for value in prefilter_dict.values()]
+        newcmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(newcmdreturn)
+        return newcmdreturn
+
+
 
     def getresourcebyname(self, cmdreturn: object, datafilter: dict={}, **kwargs) -> dict:
         '''
@@ -325,7 +366,7 @@ class Raidcomparser:
             cmdreturn.data.extend(parsedldev.data)
         return cmdreturn
 
-    def gethostgrp(self,cmdreturn: object) -> object:
+    def XXgethostgrp(self,cmdreturn: object) -> object:
 
         self.initload(cmdreturn)
         cmdreturn.stats = { 'hostgroupcount':0 }
@@ -360,7 +401,60 @@ class Raidcomparser:
         if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
-    def gethostgrp_key_detail(self,cmdreturn: object, datafilter: dict={}) -> object:
+    def gethostgrp(self,cmdreturn: object, datafilter: dict={}) -> object:
+
+        '''
+        host_grp_filter = { 'KEY': 'VALUE' | ['VALUE1','VALUE2'], 'KEY2': 'VALUE' | ['VALUE1','VALUE2'] }\n
+        e.g. host_grp_filter = { 'HMD': ['LINUX/IRIX','VMWARE_EX'] } filters host groups where HMD is LINUX/IRIX or VMWARE_EX\n
+        host_grp_filter is case sensitive in both the key and the value and allows host_grps through only if ALL criteria matches.\n
+        Remember that pretty much all of the values are parsed into strings, RGID for example is a string.\n
+        '''
+        self.initload(cmdreturn)
+        cmdreturn.stats = { '_GIDS':0, '_GIDS_UNUSED':0 }
+
+        def hostgrpsview(gid_key,data):
+            for host_grp_dict in data:
+                #self.log.info(host_grp_dict)
+                port = host_grp_dict['PORT']
+                gid = host_grp_dict['GID']
+                cmdreturn.view[port] = cmdreturn.view.get(port,{})
+                cmdreturn.view[port][gid_key] = cmdreturn.view[port].get(gid_key,{})
+                cmdreturn.view[port][gid_key][gid] = host_grp_dict
+                cmdreturn.data.append(host_grp_dict)
+                cmdreturn.stats[gid_key] += 1
+
+        prefiltered_host_grps = []
+        cmdreturn.headers.insert(0,"HOST_GRP_ID")
+        for line in cmdreturn.rawdata:
+            hostgroupName = re.findall(r'"([^"]*)"', line)
+            if hostgroupName:
+                line = line.replace(f'"{hostgroupName[0]}"','-')
+            port,gid,rgid,nameSpace,serial,hostmode,host_mode_options = line.split()
+            port = re.sub(r'\d+$','', port)
+            host_grp_id = f"{port}-{gid}"
+
+            if hostgroupName:
+                nameSpace = hostgroupName[0]
+            if host_mode_options == "-":
+                host_mode_options = []
+            else:
+                #host_mode_options = sorted([int(host_mode) for host_mode in host_mode_options.split(':')])
+                host_mode_options = [str(hmo) for hmo in sorted([int(opt) for opt in host_mode_options.split(':')])]
+
+            values = (host_grp_id,port,gid,rgid,nameSpace,serial,hostmode,host_mode_options)
+            
+            prefiltered_host_grps.append(dict(zip(cmdreturn.headers, values)))
+
+        filtered_host_grps = list(filter(lambda l: self.applyfilter(l,datafilter),filter_unused_grps))
+        #filtered_host_grps = list(filter(filter_host_grps,prefiltered_host_grps))
+        used_host_grps = list(filter(lambda x: (x['GROUP_NAME'] != '-'),filtered_host_grps))
+        #unused_host_grps = list(filter(lambda x: (x['GROUP_NAME'] == '-'),filtered_host_grps))
+        hostgrpsview('_GIDS',used_host_grps)
+        #hostgrpsview('_GIDS_UNUSED',unused_host_grps)
+        #if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
+        return cmdreturn
+
+    def gethostgrp_key_detail(self,cmdreturn: object, datafilter: dict={}, hostgrp_usage: list=['_GIDS','_GIDS_UNUSED']) -> object:
 
         '''
         host_grp_filter = { 'KEY': 'VALUE' | ['VALUE1','VALUE2'], 'KEY2': 'VALUE' | ['VALUE1','VALUE2'] }\n
@@ -405,11 +499,11 @@ class Raidcomparser:
             prefiltered_host_grps.append(dict(zip(cmdreturn.headers, values)))
 
         filtered_host_grps = list(filter(lambda l: self.applyfilter(l,datafilter),prefiltered_host_grps))
-        #filtered_host_grps = list(filter(filter_host_grps,prefiltered_host_grps))
-        used_host_grps = list(filter(lambda x: (x['GROUP_NAME'] != '-'),filtered_host_grps))
-        unused_host_grps = list(filter(lambda x: (x['GROUP_NAME'] == '-'),filtered_host_grps))
-        hostgrpsview('_GIDS',used_host_grps)
-        hostgrpsview('_GIDS_UNUSED',unused_host_grps)
+        host_grps_usage = { '_GIDS': list(filter(lambda x: (x['GROUP_NAME'] != '-'),filtered_host_grps)), '_GIDS_UNUSED': list(filter(lambda x: (x['GROUP_NAME'] == '-'),filtered_host_grps)) }
+
+        for usage in hostgrp_usage:    
+            hostgrpsview(usage,host_grps_usage[usage])
+
         #if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
         return cmdreturn
 
