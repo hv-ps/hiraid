@@ -40,9 +40,13 @@ hiraid.egg-info/PKG-INFO
 hiraid.egg-info/SOURCES.txt
 hiraid.egg-info/dependency_links.txt
 hiraid.egg-info/entry_points.txt
+hiraid.egg-info/requires.txt
 hiraid.egg-info/top_level.txt
 hiraid/historutils/__init__.py
 hiraid/historutils/historutils.py
 hiraid/horcm/__init__.py
+hiraid/horcm/cci_exceptions.py
+hiraid/horcm/cci_parser.py
+hiraid/horcm/execute_cci.py
 hiraid/horcm/horcm_cci.py
 hiraid/horcm/horcm_template.py

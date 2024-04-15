@@ -8,7 +8,9 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 import re
+import ast
 import time
+import json
 import logging
 import subprocess
 import collections
@@ -18,6 +20,8 @@ from .cmdview import Cmdview,CmdviewConcurrent
 from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 from .hiraidexception import RaidcomException
+from hicciexceptions.cci_exceptions import *
+from hicciexceptions.cci_exceptions import cci_exceptions_table
 
 
 version = "v1.0.35"
@@ -1628,7 +1632,20 @@ class Raidcom:
         else:
             return cmd
         
-    def execute(self,cmd,undocmds=[],undodefs=[],expectedreturn=0,**kwargs) -> object:
+    def exception_string(self,cmdreturn):
+        return json.dumps(ast.literal_eval(str(vars(cmdreturn))))
+
+    def return_cci_exception(self,cmdreturn):
+        try:
+            errorcode = re.match(r".*\[(.*?)\].*",cmdreturn.stderr,re.DOTALL).group(1)
+            if cci_exceptions_table.get(errorcode,{}).get('return_value',99999) == cmdreturn.returncode:
+                cmdreturn.cci_error = errorcode
+                return cci_exceptions_table[errorcode]['Exception']
+        except:
+            cmdreturn.cci_error = 'Unknown'
+            return Exception
+        
+    def execute(self,cmd,undocmds=[],undodefs=[],expectedreturn=0,raise_err=True,**kwargs) -> object:
 
         cmdreturn = Cmdview(cmd=cmd)
         cmdreturn.expectedreturn = expectedreturn
@@ -1643,34 +1660,32 @@ class Raidcom:
         cmdreturn.stdout, cmdreturn.stderr = proc.communicate()
         cmdreturn.returncode = proc.returncode
         cmdreturn.executed = True
-        
+
         if proc.returncode and proc.returncode != expectedreturn:
             self.log.error("Return > "+str(proc.returncode))
             self.log.error("Stdout > "+cmdreturn.stdout)
             self.log.error("Stderr > "+cmdreturn.stderr)
-            message = {'return':proc.returncode,'stdout':cmdreturn.stdout, 'stderr':cmdreturn.stderr }
-            if self.asyncmode:
-                return cmdreturn
-            raise Exception(f"Unable to execute Command '{self.obfuscatepwd(cmd)}'. Command dump > {message}")
-
+            if raise_err:
+                raise self.return_cci_exception(cmdreturn)(self.exception_string(cmdreturn))
+            
         for undocmd in undocmds: 
             echo = f'echo "Executing: {undocmd}"'
             self.undocmds.insert(0,undocmd)
             self.undocmds.insert(0,echo)
             cmdreturn.undocmds.insert(0,undocmd)
-                
+            
         for undodef in undodefs:
             self.undodefs.insert(0,undodef)
             cmdreturn.undodefs.insert(0,undodef)
-
         if self.cmdoutput:
             self.log.info(f"stdout: {cmdreturn.stdout}")
-
         if kwargs.get('raidcom_asyncronous'):
             self.getcommandstatus()
 
-        return cmdreturn
 
+        
+        return cmdreturn
+        
 
 
     # BELOW IS OLD
