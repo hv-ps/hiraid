@@ -8,8 +8,8 @@ import logging
 import subprocess
 from .execute_cci import execute as cci_execute
 #from .cci_exceptions import EX_ATTHOR as EX_ATTHOR
-from hiexceptions.horcm.cci_exceptions import *
-from hiexceptions.horcm.cci_exceptions import cci_exceptions_table
+from hicciexceptions.horcm.cci_exceptions import *
+from hicciexceptions.horcm.cci_exceptions import cci_exceptions_table
 import ast
 #from .cci_cmds import *
 #from .cci_cmds import cci_raidqry
