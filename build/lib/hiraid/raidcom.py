@@ -23,7 +23,7 @@ from .hiraidexception import RaidcomException
 from hicciexceptions.cci_exceptions import *
 from hicciexceptions.cci_exceptions import cci_exceptions_table
 
-version = "v1.0.35"
+version = "v1.0.50"
 
 class Raidcom:    
 
