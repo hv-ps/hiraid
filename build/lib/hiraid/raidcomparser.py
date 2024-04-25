@@ -26,6 +26,8 @@
 #
 # 08/03/2024    v1.1.04     Updated gethostgrp_key_detail to allow gethostgrp to be dropped - DC
 #
+# 18/04/2024    v1.1.05     Ditched some junk and fixed getldevlist_front_end
+#
 # -----------------------------------------------------------------------------------------------------------------------------------
 
 import re
@@ -74,7 +76,7 @@ class Raidcomparser:
         return True
             
     #def initload(self,cmdreturn,header='',keys=[],replaceHeaderChars={}):
-    def initload(self,cmdreturn,header='',keys=[]):
+    def initload(self,cmdreturn,header='',keys=[],maxsplit=-1):
 
         cmdreturn.rawdata = [row.strip() for row in list(filter(None,cmdreturn.stdout.split('\n')))]
         cmdreturn.headers = []
@@ -83,7 +85,7 @@ class Raidcomparser:
         else:
             cmdreturn.header = cmdreturn.rawdata.pop(0)
             #cmdreturn.headers = [header.translate(str.maketrans(replaceHeaderChars)) for header in cmdreturn.header.split()]
-            cmdreturn.headers = cmdreturn.header.split()
+            cmdreturn.headers = cmdreturn.header.split(maxsplit=maxsplit)
 
     def translate_headers(self,replaceHeaderChars={}):
         corrected_dict = { k.replace(':', ''): v for k, v in ori_dict.items() }
@@ -174,8 +176,6 @@ class Raidcomparser:
                 cmdreturn.stats['resource_group_count'] += 1
 
         for cmdreturn in cmdreturns:
-            print(f"{vars(cmdreturn)}\n\n")
-            #newcmdreturn.rawdata.append(cmdreturn.rawdata)
             prefilter = []
             self.initload(cmdreturn)
             
@@ -358,49 +358,26 @@ class Raidcomparser:
 
     def getldevlist_front_end(self,cmdreturn: object, datafilter: dict={}, **kwargs) -> object:
 
-        listofldevs = list(filter(None,cmdreturn.stdout.split('\n\n')))
-        for ldev in listofldevs:
-            ldevobj = type('obj', (object,), {'stdout' : ldev, 'view': {}})
-            parsedldev = self.getldev(ldevobj)
-            self.updateview(cmdreturn.view,parsedldev.view)
-            cmdreturn.data.extend(parsedldev.data)
-        return cmdreturn
+        self.initload(cmdreturn,maxsplit=9)
+        cmdreturn.stats = { 'ldev_count':0 }
 
-    def XXgethostgrp(self,cmdreturn: object) -> object:
+        def createview(cmdreturn):
+            for datadict in cmdreturn.data:
+                #self.log.info(datadict)
+                ldevid = datadict['LDEV#']
+                cmdreturn.view[ldevid] = datadict
+                cmdreturn.stats['ldev_count'] += 1
 
-        self.initload(cmdreturn)
-        cmdreturn.stats = { 'hostgroupcount':0 }
-
+        prefilter = []
         for line in cmdreturn.rawdata:
-            hmos = ""
-            hmolist = []
-            sline = line.strip()
-            hmoregex = r'(.*?)([\s\d]+$)'
-            capture = re.search(hmoregex,sline)
-            try:
-                hmos = str(capture.group(2).strip()).split()
-                sline = capture.group(1)
-                hmolist = hmos.split()
-            except:
-                pass
             
-            row = sline.split()
-            port,gid,serial,hmd = row[0],row[1],row[-2],row[-1]
-            revealHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+serial+r'\s+'+hmd+r')'
-            hostgroupName = re.search(revealHostGroupNameRegex,sline).group(1)
-            port = re.sub(r'\d+$','', port)
-            values = (port,gid,hostgroupName,serial,hmd,sorted(hmolist))
+            row = line.rsplit(maxsplit=9)
+            prefilter.append(dict(zip(cmdreturn.headers, row)))
 
-            cmdreturn.view[port] = cmdreturn.view.get(port,{'_GIDS':{}})
-            cmdreturn.view[port]['_GIDS'][gid] = {}
-            cmdreturn.stats['hostgroupcount'] += 1
-
-            for value,head in zip(values,cmdreturn.headers):
-                cmdreturn.view[port]['_GIDS'][gid][head] = value
-
-        if cmdreturn.header: cmdreturn.rawdata.insert(0,cmdreturn.header)
+        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
+        createview(cmdreturn)
         return cmdreturn
-
+        
     def gethostgrp(self,cmdreturn: object, datafilter: dict={}) -> object:
 
         '''
@@ -741,6 +718,40 @@ class Raidcomparser:
         createview(cmdreturn.data)
         return cmdreturn
 
+    def getdevicegrp(self,cmdreturn: object,datafilter: dict={}) -> dict:
+        
+        self.initload(cmdreturn)
+        cmdreturn.stats = { 'devicecount':0 }
+
+        '''
+        LDEV_GROUP                     LDEV_NAME                       LDEV#     Serial#
+        MIG_350147.358149.1.BB8E5CFBEA MIG_s_34000_84:d0_t_34000_84:d0 34000     350147
+        MIG_350147.358149.1.BB8E5CFBEA MIG_s_34001_84:d1_t_34001_84:d1 34001     350147
+        MIG_350147.358149.1.BB8E5CFBEA MIG_s_34002_84:d2_t_34002_84:d2 34002     350147
+        MIG_350147.358149.1.BB8E5CFBEA MIG_s_34003_84:d3_t_34003_84:d3 34003     350147
+        '''
+        def createview(data):
+            for datadict in data:
+                #self.log.info(datadict)
+                ldev_grp = datadict['LDEV_GROUP']
+                ldev = datadict['LDEV#']
+                cmdreturn.view[ldev_grp] = cmdreturn.view.get(ldev_grp,{})
+                cmdreturn.view[ldev_grp][ldev] = datadict
+                cmdreturn.stats['devicecount'] += 1
+
+        prefiltered = []
+        for line in cmdreturn.rawdata:
+            values = line.split()
+            # Can't support copy_grps with spaces atm, sorry
+            if len(values) != len(cmdreturn.headers): raise("header and data length mismatch, unable to support copy_grps with spaces, especially if device_grp also has spaces")
+            prefiltered.append(dict(zip(cmdreturn.headers,values)))
+
+        cmdreturn.data = list(filter(lambda l: self.applyfilter(l,datafilter),prefiltered))
+        createview(cmdreturn.data)
+        return cmdreturn
+
+
+
     def getpath(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
         '''
         cmdreturn: getpath cmdreturn object as input
@@ -1041,55 +1052,6 @@ class Raidcomparser:
         createview(cmdreturn.data)
         return cmdreturn
 
-    '''
-     def getparitygrp(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
-
-        self.initload(cmdreturn)
-        cmdreturn.stats = { 'parity_grp_count':0 }
-
-        def createview(cmdreturn):
-            for datadict in cmdreturn.data:
-                #PHG GROUP STS CM IF MP# PORT   WWN                 PR LUN PHS  Serial# PRODUCT_ID LB PM DM QD TO(s) PBW(
-                group = datadict['GROUP']
-                cmdreturn.view[group] = datadict
-                cmdreturn.stats['parity_grp_count'] += 1
-
-        prefilter = []
-        for line in cmdreturn.rawdata:
-            row = line.split()
-            prefilter.append(dict(zip(cmdreturn.headers, row)))
-            
-        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
-        createview(cmdreturn)
-        return cmdreturn
-    '''
-
-    '''
-    def getport(self,cmdreturn: object, datafilter: dict={}, **kwargs ) -> object:
-    
-        self.initload(cmdreturn)
-        cmdreturn.stats = { 'portcount':0 }
-
-        def createview(cmdreturn):
-            for datadict in cmdreturn.data:
-                port = datadict['PORT']
-                if port not in cmdreturn.view:
-                    cmdreturn.view[port] = copy.deepcopy(datadict)
-                    cmdreturn.view[port]['ATTR'] = []
-                    cmdreturn.stats['portcount'] += 1
-                cmdreturn.view[port]['ATTR'].append(datadict['ATTR'])
-
-        prefilter = []
-        for line in cmdreturn.rawdata:
-            row = line.split()
-            row[0] = re.sub(r'\d+$','',row[0])
-            prefilter.append(dict(zip(cmdreturn.headers, row)))
-            
-        cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))
-        createview(cmdreturn)
-        return cmdreturn
-    '''
-
     def getdrive(self,cmdreturn: object,datafilter: dict={}) -> object:
 
         self.initload(cmdreturn)
@@ -1154,474 +1116,3 @@ class Raidcomparser:
             viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
 
         return viewsdict
-    # OLD BELOW
-
-    '''
-    def getport_default(self,metaview,default_view_keyname: str='_ports'):
-        view = {}
-        view[default_view_keyname] = metaview['data']
-        self.log.debug("view: {}, default_view_keyname {}".format(view,default_view_keyname))
-        self.updateview(self.raidcom.views,view)
-        return view
-
-    def getcopygrp(self,stdout,optviews: list=[]) -> dict:
-        
-        # stdout: some comments
-        # Create list and simultaneously filter out empties
-        # Return dictionary with copy_grp as key
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['copygrpcount'] = 0
-
-        for line in data:
-            sline = line.split()
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            if sline[0] not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][sline[0]] = {}
-            for item,head in zip(sline,headings):
-                viewsdict['metaview']['data'][sline[0]][head] = item
-                # This won't work for multi use ports! The count will be incorrect
-                # Also, concatenate port type to a list
-            viewsdict['metaview']['stats']['copygrpcount'] += 1
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-    def getrcu(self,stdout,optviews: list=[]) -> dict:
-        
-        # stdout: some comments
-        # Create list and simultaneously filter out empties
-        # Return dictionary with rcu as key
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['rcu'] = 0
-
-        for line in data:
-            sline = line.split()
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            if sline[0] not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][sline[0]] = {}
-            for item,head in zip(sline,headings):
-                viewsdict['metaview']['data'][sline[0]][head] = item
-                # This won't work for multi use ports! The count will be incorrect
-                # Also, concatenate port type to a list
-            viewsdict['metaview']['stats']['rcu'] += 1
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-    def XXXXXXgetportlogin(self,stdout,optviews=[]):
-
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['loggedinhostcount'] = 0
-
-        for line in data:
-            sline = line.split()
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            sline[0] = re.sub(r'\d+$','',sline[0])
-            if sline[0] not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][sline[0]] = {}
-
-            login_wwn,serial,dash = sline[1],sline[2],sline[3]
-
-            if login_wwn not in viewsdict['metaview']['data'][sline[0]]:
-                viewsdict['metaview']['data'][sline[0]][login_wwn] = login_wwn
-                viewsdict['metaview']['stats']['loggedinhostcount'] += 1
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-
-
-
-
-
-
-    def xxxxgethostgrp_key_detail(self,stdout,optviews=[]):
-
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['hostgroupcount'] = 0
-        
-        for line in data:
-            hostgroupName = re.findall(r'"([^"]*)"', line)
-            if hostgroupName:
-                line = line.replace(f'"{hostgroupName[0]}"','-')
-            port,gid,rgid,nameSpace,serial,hostmode,host_mode_options = line.split()
-            port = re.sub(r'\d+$','', port)
-            if hostgroupName:
-                nameSpace = hostgroupName[0]
-            if host_mode_options == "-":
-                host_mode_options = []
-            else:
-                host_mode_options = host_mode_options.split(':')
-            values = (port,gid,rgid,nameSpace,serial,hostmode,sorted(host_mode_options))
-
-            if port not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'] = { port:{} }
-            viewsdict['metaview']['data'][port][gid] = {}
-            viewsdict['metaview']['stats']['hostgroupcount'] += 1
-
-            for value,head in zip(values,headings):
-                viewsdict['metaview']['data'][port][gid][head] = value  
-
-        #viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        viewsdict['defaultview'] = getattr(self.setview,"gethostgrp_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict                
-
-        
-
-    def gethostgrpkeyhostgrprgid(self,stdout,resourcegroupid,optviews=[]):
-
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['hostgroupcount'] = 0
-
-        for line in data:
-            hmos = ""
-            hmolist = []
-            sline = line.strip()
-            self.log.debug(sline)
-            hmoregex = r'(.*?)([\s\d]+$)'
-            capture = re.search(hmoregex,sline)
-            try:
-                hmos = str(capture.group(2).strip())
-                sline = capture.group(1)
-                hmolist = hmos.split()
-            except:
-                pass
-            row = sline.split()
-            port,gid,serial,hmd = row[0],row[1],row[-2],row[-1]
-            revealHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+serial+r'\s+'+hmd+r')'
-            hostgroupName = re.search(revealHostGroupNameRegex,sline).group(1)
-            port = re.sub(r'\d+$','', port)
-            self.log.debug("Port: '"+port+"', Gid: '"+gid+"', HostgroupName: '"+hostgroupName+"', serial: '"+serial+"', hostmode: '"+hmd+"', hmos: '"+hmos+"', RSGID: '"+str(resourcegroupid)+"'" )
-            values = (port,gid,hostgroupName,serial,hmd,sorted(hmolist),resourcegroupid)
-            headings.append('RSGID')
-
-            if port not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'] = { port:{} }
-            viewsdict['metaview']['data'][port][gid] = {}
-            viewsdict['metaview']['stats']['hostgroupcount'] += 1
-
-            for value,head in zip(values,headings):
-                viewsdict['metaview']['data'][port][gid][head] = value  
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-
-
-    def XXXXgetlun(self,stdout,optviews=[]) -> dict:
-
-        self.log.debug('Entered Raidcomparser: {}'.format(inspect.currentframe().f_code.co_name))
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['luncount'] = 0
-
-        for line in data:
-            hmos = ""
-            hmolist = []
-            sline = line.strip()
-            self.log.debug(sline)
-            hmoregex = r'(.*?)([\s\d{2,3}]+$)'
-            capture = re.search(hmoregex,sline)
-            try:
-                hmos = str(capture.group(2).strip())
-                sline = capture.group(1)
-                hmolist = hmos.split()
-            except:
-                pass
-            port,gid,hmd,lun,num,ldev,cm,serial,opkma = sline.split()
-            values = sline.split()
-            values.append(sorted(hmolist))
-            values[0] = re.sub(r'\d+$','', values[0])
-            port = re.sub(r'\d+$','', port)
-            self.log.debug("Port: '"+port+"', Gid: '"+gid+"', hostmode: '"+hmd+"', lun: '"+lun+"', num: '"+num+"', ldev: '"+ldev+"', cm: '"+cm+"', serial: '"+serial+"', opkma: '"+opkma+"', hmos: '"+hmos+"'")
-            if port not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'] = { port:{} }
-            if gid not in viewsdict['metaview']['data'][port]:
-                viewsdict['metaview']['data'][port][gid] = {}
-
-            viewsdict['metaview']['data'][port][gid][lun] = {}
-            viewsdict['metaview']['stats']['luncount'] += 1
-
-            for value,head in zip(values,headings):
-                viewsdict['metaview']['data'][port][gid][lun][head] = value  
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-    #
-
-    #
-
-
-
-    def raidscanmu(self,stdout,mu,optviews=[]) -> dict:
-    
-        self.log.debug('Entered Raidcomparser: {}'.format(inspect.currentframe().f_code.co_name))
-        viewsdict, data, headings = self.initload(stdout)
-        #viewsdict['metaview']['stats']['luncount'] = 0
-        for headingIndex in range(0, len(headings)):
-            if headings[headingIndex] == '/ALPA/C':
-                x = re.split(r'/', headings[headingIndex])
-                headings[headingIndex] = x[1]
-                headings.insert(headingIndex+1, x[2]) 
-
-        headings.append('mu')
-
-        for line in data:
-            sline = line.split()
-            sline.append(mu)
-            keys = sline[0].split('-')
-            keys[1] = re.sub(r'\d+$','',keys[1])
-            sline[0] = '-'.join(keys)
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            ldevid = sline[7]
-            prikey = ldevid
-            seckey = mu
-
-            if prikey not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][prikey] = {}
-            if seckey not in viewsdict['metaview']['data'][prikey]:
-                viewsdict['metaview']['data'][prikey][seckey] = {}
-
-            for value,head in zip(sline,headings):
-                viewsdict['metaview']['data'][prikey][seckey][head] = value 
-
-            if viewsdict['metaview']['data'][prikey][seckey]['P/S'] == 'SMPL':
-                viewsdict['metaview']['data'][prikey][seckey]['Status'] = 'SMPL'
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-
-
-
-    def XXXXgethbawwn(self,stdout,optviews=[]) -> dict:
-
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['hbawwncount'] = 0
-
-        # Quick and dirty fix for when hba_wwn is requested from ELUN port
-        if re.search(r'^PORT\s+WWN',viewsdict['header']):
-            self.log.debug("Skipping ELUN hba_wwn header: "+viewsdict['header'])
-            return viewsdict
-
-        for line in data:
-            sline = line.strip()
-            self.log.debug(sline)
-            regex = r'\s(\w{16}\s{3,4}'+str(self.serial)+r')(?:\s+)(.*$)'
-            capture = re.search(regex,sline)
-            wwn,serial = capture.group(1).split()
-            wwn = wwn.lower()
-            wwn_nickname = capture.group(2)
-            row = sline.split()
-            port,gid = row[0],row[1]
-            extractHostGroupNameRegex = r'(?:^'+port+r'\s+'+gid+r'\s+)(.*?)(?:\s+'+capture.group(1)+r'\s+'+capture.group(2)+r')'
-            hostgroupName = re.search(extractHostGroupNameRegex,sline).group(1)
-            port = re.sub(r'\d+$','', port)
-            self.log.debug("Port: '"+port+"', Gid: '"+gid+"', HostgroupName: '"+hostgroupName+"', wwn: '"+wwn+"', serial: '"+serial+"', wwn_nickname: '"+wwn_nickname+"'" )
-            values = (port,gid,hostgroupName,wwn,serial,wwn_nickname)
-            if port not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'] = { port:{} }
-            if gid not in viewsdict['metaview']['data'][port]:
-                viewsdict['metaview']['data'][port][gid] = {}
-            if wwn not in viewsdict['metaview']['data'][port][gid]:
-                viewsdict['metaview']['data'][port][gid][wwn] = {}
-            viewsdict['metaview']['stats']['hbawwncount'] += 1
-
-            for value,head in zip(values,headings):
-                viewsdict['metaview']['data'][port][gid][wwn][head] = value
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-
-    def getpool(self,stdout,optviews: list=[]) -> dict:
-        
-        # stdout: some comments
-        # Create list and simultaneously filter out empties
-        # Drop numeric characters from back of port placed there based upon location in horcm
-        # Return dictionary with port as key
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['poolcount'] = 0
-
-        def nokeyopt(data):
-            for line in data:
-                sline = line.split()
-                if len(sline) != len(headings): raise("header and data length mismatch")
-                sline[0] = str(int(sline[0]))
-                if sline[0] not in viewsdict['metaview']['data']:
-                    viewsdict['metaview']['data'][sline[0]] = {}
-                for item,head in zip(sline,headings):
-                    viewsdict['metaview']['data'][sline[0]][head] = item    
-                viewsdict['metaview']['stats']['poolcount'] += 1
-
-        def keyopt(data):
-            for line in data:
-                row = line.split()
-                pid,pols,u,seq,num,ldev,h,vcap,typ,pm,pt,auto_add_plv = row[0],row[1],row[2],row[-9],row[-8],row[-7],row[-6],row[-5],row[-4],row[-3],row[-2],row[-1]
-                revealpoolnameregex = r'(?:^'+pid+r'\s+'+pols+r'\s+'+u+r'\s+)(.*?)(?:\s'+seq+r'\s+'+num+r'\s+'+ldev+r'\s+'+h+r'\s+'+vcap+r'\s+'+typ+r'\s+'+pm+r'\s+'+pt+r'\s+'+auto_add_plv+r')'
-                poolname = re.search(revealpoolnameregex,line).group(1).strip()
-                poolid = str(int(pid))
-                values = (pid,pols,u,poolname,seq,num,ldev,h,vcap,typ,pm,pt,auto_add_plv)
-                if pid not in viewsdict['metaview']['data']:
-                    viewsdict['metaview']['data'][poolid] = {}
-                for value,head in zip(values,headings):
-                    viewsdict['metaview']['data'][poolid][head] = value    
-                viewsdict['metaview']['stats']['poolcount'] += 1
-
-        if 'POOL_NAME' in headings:
-            keyopt(data)
-        else:
-            nokeyopt(data)
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-    def getcommandstatus(self,stdout,optviews: list=[]) -> dict:
-
-        viewsdict, data, headings = self.initload(stdout)
-        
-        def withreqid(data):
-            #REQID    R SSB1    SSB2    Serial#      ID  Description\n00000019 -    -       -     358149   10011  -\n
-            for line in data:
-                row = line.split()
-                reqid,r,ssb1,ssb2,serial,ID = row[0],row[1],row[2],row[3],row[4],row[5]
-                revealmessageregex = r'(?:^'+reqid+r'\s+'+r+r'\s+'+ssb1+r'\s+'+ssb2+r'\s+'+serial+r'\s+'+ID+r'\s+)(.*?)'
-                description = re.search(revealmessageregex,line).group(1)
-                values = reqid,r,ssb1,ssb2,serial,ID,description
-                if reqid not in viewsdict['metaview']['data']:
-                    viewsdict['metaview']['data'][reqid] = {}
-                for value,head in zip(values,headings):
-                    viewsdict['metaview']['data'][reqid][head] = value    
-
-        def noreqid(data):
-            #HANDLE   SSB1    SSB2    ERR_CNT        Serial#     Description\n00de        -       -          0         358149     -\n
-            pass
-
-        if 'REQID' in headings:
-            withreqid(data)
-        else:
-            noreqid(data)
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-        
-
-    def pairdisplay(self,stdout,optviews: list=[]) -> dict:
-        
-        # THIS IS NOT IN USE
-
-        # stdout: some comments
-        # Create list and simultaneously filter out empties
-        # Drop numeric characters from back of port placed there based upon location in horcm
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['devicecount'] = 0
-
-        for line in data:
-            sline = line.split()
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            sline[0] = re.sub(r'\d+$','',sline[0])
-            if sline[0] not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][sline[0]] = {}
-            for item,head in zip(sline,headings):
-                viewsdict['metaview']['data'][sline[0]][head] = item
-                # Also, concatenate port type to a list
-            viewsdict['metaview']['stats']['devicecount'] += 1
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-
-    def getsnapshot(self,stdout,optviews: list=[]) -> dict:
-        viewsdict, data, headings = self.initload(stdout)
-        viewsdict['metaview']['stats']['snapshot'] = 0
-
-        for line in data:
-            sline = line.split()
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            if sline[0] not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][sline[0]] = {}
-            #for item,head in zip(sline,headings):
-            #    viewsdict['metaview']['data'][sline[0]][head] = item
-                # This won't work for multi use ports! The count will be incorrect
-                # Also, concatenate port type to a list
-            viewsdict['metaview']['stats']['snapshot'] += 1
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-
-    def getsnapshotgroup(self,stdout,optviews: list=[]) -> dict:
-        
-        # stdout: some comments
-        # Create list and simultaneously filter out empties
-        # Return dictionary with copy_grp as key
-        viewsdict, data, headings = self.initload(stdout)
-
-        for line in data:
-            sline = line.split()
-            if len(sline) != len(headings): raise("header and data length mismatch")
-            if sline[0] not in viewsdict['metaview']['data']:
-                viewsdict['metaview']['data'][sline[0]] = {}
-            MuIndex = headings.index('MU#')
-            viewsdict['metaview']['data'][sline[0]][sline[MuIndex]] = viewsdict['metaview']['data'][sline[0]].get(sline[MuIndex],{})
-            for item,head in zip(sline,headings):
-                viewsdict['metaview']['data'][sline[0]][sline[MuIndex]][head] = item
-                # This won't work for multi use ports! The count will be incorrect
-                # Also, concatenate port type to a list
-
-        viewsdict['defaultview'] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_default")(viewsdict['metaview'])
-        if viewsdict['header']: viewsdict['list'].insert(0,viewsdict['header'])
-        for view in optviews:
-            viewsdict[view] = getattr(self.setview,inspect.currentframe().f_code.co_name+"_"+view)(viewsdict['metaview'],view)
-
-        return viewsdict
-
-    '''

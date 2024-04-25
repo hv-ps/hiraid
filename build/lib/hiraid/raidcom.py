@@ -23,11 +23,11 @@ from .hiraidexception import RaidcomException
 from hicciexceptions.cci_exceptions import *
 from hicciexceptions.cci_exceptions import cci_exceptions_table
 
-version = "v1.0.50"
+__version__ = "v1.0.54"
 
-class Raidcom:    
+class Raidcom:
 
-    version = version
+    version = __version__
     
     def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging,username=None,password=None,asyncmode=False,unlockOnException=True):
 
@@ -120,7 +120,7 @@ class Raidcom:
         self.raidqry()
         cmdreturn = self.parser.identify()
         self.updateview(self.views,{view_keyname:cmdreturn.view})
-        self.log.info(f"Storage identity: {cmdreturn.view}")
+        self.log.debug(f"Storage identity: {cmdreturn.view}")
         return cmdreturn
 
     def raidqry(self, view_keyname: str='_raidqry', **kwargs) -> object:
@@ -180,7 +180,6 @@ class Raidcom:
             optcmd = (f'-key {key}','')[not key or key == '']
             cmd = f"{self.path}raidcom get resource {optcmd} -I{self.instance} -s {self.serial}"
             return self.execute(cmd,**kwargs)
-
 
         cmdreturn = CmdviewConcurrent()
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -496,6 +495,13 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
+    def getdevicegrp(self, device_grp_name, view_keyname: str='_devicegrps', **kwargs) -> object:
+        cmd = f"{self.path}raidcom get device_grp -device_grp_name {device_grp_name} -I{self.instance} -s {self.serial}"
+        cmdreturn = self.execute(cmd,**kwargs)
+        self.parser.getdevicegrp(cmdreturn,datafilter=kwargs.get('datafilter',{}))
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        return cmdreturn
+    
     def getpath(self,view_keyname: str='_paths', update_view=True, **kwargs) -> object:
         '''
         raidcom get path\n
@@ -672,7 +678,7 @@ class Raidcom:
         undodef = [{ 'undodef': 'deleteldev', 'args':{ 'ldev_id':ldev_id }.update(ucmddict)}]
 
         cmdreturn = self.execute(cmd=cmd,undocmds=undocmd,undodefs=undodef,raidcom_asyncronous=False,**kwargs)
-        print(cmdreturn.stdout)
+        
         reqid = cmdreturn.stdout.rstrip().split(' : ')
         
         if not re.search(r'REQID',reqid[0]):
@@ -741,7 +747,6 @@ class Raidcom:
         else:
             cmd = f"{self.path}raidcom add ldev -ldev_id auto -ldev_range {ldev_id}-{ldev_id} -pool {poolid} -capacity {capacity} {cmdparam} -request_id auto -I{self.instance} -s {self.serial}"
             cmdreturn = self.execute(cmd=cmd,raidcom_asyncronous=False,**kwargs)
-            print(cmd)
         reqid = cmdreturn.stdout.rstrip().split(' : ')
         
         if not re.search(r'REQID',reqid[0]):
@@ -754,13 +759,9 @@ class Raidcom:
                 raise Exception(message)
         try:
             getcommandstatus = self.getcommandstatus(request_id=reqid[1])
-            print(f"0 {getcommandstatus.view} error: {getcommandstatus.returncode}")
             self.parser.getcommandstatus(getcommandstatus)
-            print(f"1 {getcommandstatus.view}")
             auto_ldev_id = getcommandstatus.data[0]['ID']
             undocmd = f"{self.path}raidcom delete ldev -ldev_id {auto_ldev_id} -pool {poolid} -capacity {capacity} {ucmdparam} -I{self.instance} -s {self.serial}"
-            print(f"undocmd: {undocmd}")
-            #undodef = { 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }.update(ucmddict)}
             undodef = { 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }}
             cmdreturn.undocmds.insert(0,undocmd)
             cmdreturn.undodefs.insert(0,undodef)
@@ -774,8 +775,6 @@ class Raidcom:
             else:
                 raise Exception(f"Failed to create ldev {ldev_id}, request_id {reqid[1]} error {e}")
 
-        print(f"cmdreturn.returncode: {cmdreturn.returncode}")
-        print(f"cmdreturn.expectedreturn: {cmdreturn.expectedreturn}")
         if not kwargs.get('noexec') and return_ldev and (cmdreturn.returncode == cmdreturn.expectedreturn):
             getldev = self.getldev(ldev_id=auto_ldev_id)
             cmdreturn.data = getldev.data
@@ -842,15 +841,13 @@ class Raidcom:
         try:
             # execute function uses getcommandstatus without request_id so we need to turn it off and check
             cmdreturn = self.execute(cmd=cmd,raidcom_asyncronous=False,**kwargs)
-            print(f"cmdreturn1: {vars(cmdreturn)}")
             reqid = cmdreturn.stdout.rstrip().split(' : ')
-            print(f"reqid: {reqid}")
+            
             if not re.search(r'REQID',reqid[0]):
                 cmdreturn.stderr = f"Unable to obtain REQID from stdout {cmdreturn}"
                 raise Exception(cmdreturn.stderr)
             getcommandstatus = self.getcommandstatus(request_id=reqid[1])
             if getcommandstatus.returncode:
-                print(f"getcommandstatus.returncode: {getcommandstatus.returncode}")
                 cmdreturn.stderr = getcommandstatus.stdout
                 cmdreturn.returncode = getcommandstatus.returncode
                 cmdreturn.view = getcommandstatus.view
@@ -992,32 +989,15 @@ class Raidcom:
         undodefs.insert(0,undodef)
 
     def deleteldev_undo(self,ldev_id: str, **kwargs):
-        print(f"deleteldev_undo {ldev_id}")
         ldev = self.getldev(ldev_id=ldev_id)
         undocmds = []
         undodefs = []
         if len(ldev.data[0].get('LDEV_NAMING',"")):
-            print("populateundo - LDEV_NAMING")
             self.populateundo({'undodef':'modifyldevname','args':{'ldev_id':ldev_id,'ldev_name':ldev.data[0]['LDEV_NAMING']}},undocmds,undodefs)
         if ldev.data[0]['VOL_TYPE'] != "NOT DEFINED":
-            print("populateundo - NOT DEFINED")
             self.populateundo({'undodef':'addldev','args':{'ldev_id':ldev_id,'capacity':ldev.data[0]['VOL_Capacity(BLK)'],'poolid':ldev.data[0]['B_POOLID']}},undocmds,undodefs)
-        print("returning from populateundo")
         return undocmds,undodefs,ldev
             
-    def XXdeleteldev(self, ldev_id: str, **kwargs) -> object:
-        print(f"deleteldev {ldev_id}, call deleteldev_undo")
-        undocmds,undodefs,ldev = self.deleteldev_undo(ldev_id=ldev_id)
-        print(f"after deleteldev_undo")
-        #self.resetcommandstatus()
-        cmd = f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
-
-        cmdreturn = self.execute(cmd,undocmds,undodefs,raidcom_asyncronous=True,**kwargs)
-        cmdreturn.view = ldev.view
-        cmdreturn.data = ldev.data
-        #self.getcommandstatus()
-        return cmdreturn
-
     def deleteldev(self,ldev_id: str, **kwargs) -> object:
         cmd = f"{self.path}raidcom delete ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
         cmdreturn = self.execute(cmd,raidcom_asyncronous=True,**kwargs)
@@ -1180,12 +1160,6 @@ class Raidcom:
         auto_ldev_id = getcommandstatus.data[0]['ID']
         undodef = {'undodef':'deleteldev','args':{'ldev_id':auto_ldev_id}}
 
-        print(f"auto_ldev_id: {auto_ldev_id}")
-        print(f"Autoldev requires a little work for an undo..")
-        #undo = self.deleteldev(ldev_id=auto_ldev_id,noexec=True)
-        #undocmd = [f"{self.path}raidcom delete ldev -ldev_id {auto_ldev_id} -I{self.instance} -s {self.serial}"]
-        #undodef = [{ 'undodef': 'deleteldev', 'args':{ 'ldev_id':auto_ldev_id }.update(ucmddict)}]
-        print("After deleteldev")
         cmdreturn.view = undo.view
         cmdreturn.data = undo.data
         cmdreturn.undocmds.insert(0,undo.cmd)
@@ -1217,7 +1191,6 @@ class Raidcom:
             cmdreturn = self.execute(cmd=cmd,**kwargs)
             lun = re.match('^raidcom: LUN \d+\((0x[0-9-af]+)\) will be used for adding',cmdreturn.stdout,re.I)
             if lun:
-                #print(lun.group(1))
                 lun_id = int(lun.group(1),16)
             else:
                 raise Exception(f"Unable to extract lun information while mapping ldev_id {ldev_id} to {port}{cmdparam}")
@@ -1654,7 +1627,6 @@ class Raidcom:
         if kwargs.get('raidcom_asyncronous'):
             self.resetcommandstatus()
         self.log.debug(f"Executing: {self.obfuscatepwd(cmd)}")
-        #self.log.info(f"Expecting return code {expectedreturn}")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, shell=True)
         cmdreturn.stdout, cmdreturn.stderr = proc.communicate()
         cmdreturn.returncode = proc.returncode
