@@ -106,11 +106,13 @@ class Raidcomparser:
         self.raidcom.micro_ver = micro_ver
         self.raidcom.cache = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['Cache(MB)']
         self.raidcom.horcm_ver = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['HORCM_ver']
+        self.raidcom.cmd_device = self.raidcom.views['_horcctl'][self.raidcom.unitid]
+        self.raidcom.cmd_device_type = ('FIBRE','IP')['IPCMD' in self.raidcom.cmd_device]
 
         if not self.raidcom.vtype:
             raise Exception(f"Unable to identify self, check v_id.py for supported models, dump raidqry: {self.raidcom.views['_raidqry'][str(self.raidcom.serial)]}")
         
-        view = { 'v_id': self.raidcom.v_id, 'vtype': self.raidcom.vtype, 'model': self.raidcom.model, 'micro_ver': self.raidcom.micro_ver, 'cache': self.raidcom.cache, 'horcm_ver': self.raidcom.horcm_ver, 'serial': self.raidcom.serial }
+        view = { 'v_id': self.raidcom.v_id, 'vtype': self.raidcom.vtype, 'model': self.raidcom.model, 'micro_ver': self.raidcom.micro_ver, 'cache': self.raidcom.cache, 'horcm_ver': self.raidcom.horcm_ver, 'serial': self.raidcom.serial, 'horcm_inst': self.raidcom.instance, 'cmd_device': self.raidcom.cmd_device, 'cmd_device_type': self.raidcom.cmd_device_type }
         #cmdreturn = Cmdview(returncode=0,stdout=view,stderr=None)
         cmdreturn = Cmdview("identify")
         cmdreturn.stdout = view
@@ -226,6 +228,7 @@ class Raidcomparser:
         default_view_keyname: default _ports
         '''
         self.initload(cmdreturn)
+        cmdreturn.headers.append('UNITID')
         cmdreturn.stats = { 'portcount':0 }
 
         def createview(cmdreturn):
@@ -240,7 +243,11 @@ class Raidcomparser:
         prefilter = []
         for line in cmdreturn.rawdata:
             row = line.split()
-            row[0] = re.sub(r'\d+$','',row[0])
+            #row[0] = re.sub(r'\d+$','',row[0])
+            port = re.sub(r'\d+$','',row[0])
+            unitid = (row[0].replace(port,''),'0')[row[0].replace(port,'') == '']
+            row[0] = port
+            row.append(unitid)
             prefilter.append(dict(zip(cmdreturn.headers, row)))
             
         cmdreturn.data = list(filter(lambda r: self.applyfilter(r,datafilter),prefilter))

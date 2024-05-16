@@ -21,7 +21,7 @@ from string import Template
 from datetime import datetime
 from ..historutils.historutils import Storcapunits as storagecaps
 from ..cmdview import Cmdview
-from .cci_parser import Cci_parser
+from .cci_parser import Horcctl_parser
 
 
 

@@ -10,6 +10,7 @@ hiraid/cmrestswagger.py
 hiraid/cmviews.py
 hiraid/customhostviews.py
 hiraid/customviews.py
+hiraid/execute_cci.py
 hiraid/gadedgemigration.py
 hiraid/gadmigration.py
 hiraid/hiraidexception.py
@@ -23,6 +24,7 @@ hiraid/raidadmin.py
 hiraid/raidcom.py
 hiraid/raidcomparser.py
 hiraid/raidcomstats.py
+hiraid/raidcomx.py
 hiraid/raidlib.py
 hiraid/raidlibStart.py
 hiraid/raidlibput.py
@@ -44,6 +46,8 @@ hiraid.egg-info/requires.txt
 hiraid.egg-info/top_level.txt
 hiraid/historutils/__init__.py
 hiraid/historutils/historutils.py
+hiraid/horcctl/__init__.py
+hiraid/horcctl/horcctl_parser.py
 hiraid/horcm/__init__.py
 hiraid/horcm/cci_exceptions.py
 hiraid/horcm/cci_parser.py

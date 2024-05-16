@@ -7,23 +7,17 @@
 # Author: Clive Meakin
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-import re
-import ast
-import time
-import json
-import logging
-import subprocess
-import collections
-import concurrent.futures
+import re, ast, time, json, logging, subprocess, collections, concurrent.futures
 from .raidcomparser import Raidcomparser
 from .cmdview import Cmdview,CmdviewConcurrent
 from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 from .hiraidexception import RaidcomException
+from .horcctl import Horcctl
 from hicciexceptions.cci_exceptions import *
 from hicciexceptions.cci_exceptions import cci_exceptions_table
 
-__version__ = "v1.0.54"
+__version__ = "v1.0.56"
 
 class Raidcom:
 
@@ -62,6 +56,14 @@ class Raidcom:
                 view[k] = v
         return view
 
+    def login(self,**kwargs):
+        if self.username and self.password:
+            cmd = f"{self.path}raidcom -login {self.username} {self.password} -I{self.instance}"
+            return self.execute(cmd,**kwargs)
+
+    def logout(self,**kwargs):
+        cmd = f"{self.path}raidcom -logout -I{self.instance} -s {self.serial}"
+        return self.execute(cmd,**kwargs)
     
     def checkport(self,port):
         if not re.search(r'^cl\w-\D+\d?$',port,re.IGNORECASE): raise Exception('Malformed port: {}'.format(port))
@@ -115,11 +117,20 @@ class Raidcom:
             self.lock = False
         return cmdreturn
     
+    def horcctl(self, unitid: int, view_keyname: str='_horcctl', **kwargs) -> object:
+        cmdreturn = Horcctl(self.instance).showControlDeviceOfHorcm(unitid)
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.log.debug(f"Storage horcctl (unitid:cmddevice): {cmdreturn.view}")
+        return cmdreturn
+
     def identify(self, view_keyname: str='_identity', **kwargs) -> object:
         self.concurrent_getresource()
         self.raidqry()
+        self.unitid = self.getport().data[0]['UNITID']
+        self.horcctl(unitid=self.unitid)
         cmdreturn = self.parser.identify()
         self.updateview(self.views,{view_keyname:cmdreturn.view})
+        #Horcctl
         self.log.debug(f"Storage identity: {cmdreturn.view}")
         return cmdreturn
 
@@ -144,15 +155,6 @@ class Raidcom:
         self.parser.raidqry(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
-
-    def login(self,**kwargs):
-        if self.username and self.password:
-            cmd = f"{self.path}raidcom -login {self.username} {self.password} -I{self.instance}"
-            return self.execute(cmd,**kwargs)
-
-    def logout(self,**kwargs):
-        cmd = f"{self.path}raidcom -logout -I{self.instance} -s {self.serial}"
-        return self.execute(cmd,**kwargs)
 
     def limitations(self):
         for limitation in Storagecapabilities.default_limitations:
