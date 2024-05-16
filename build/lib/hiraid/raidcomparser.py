@@ -34,6 +34,7 @@ import re
 import collections
 from typing import Callable
 from .historutils.historutils import Storcapunits
+from .historutils.historutils import Ldevid
 from .cmdview import Cmdview
 from .v_id import VId
 import copy
@@ -108,12 +109,38 @@ class Raidcomparser:
         self.raidcom.horcm_ver = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['HORCM_ver']
         self.raidcom.cmd_device = self.raidcom.views['_horcctl'][self.raidcom.unitid]
         self.raidcom.cmd_device_type = ('FIBRE','IP')['IPCMD' in self.raidcom.cmd_device]
-
+        self.raidcom.cmd_device_ldevid = None
+        self.raidcom.cmd_device_culdev = None
+        self.raidcom.cmd_device_port = None
         if not self.raidcom.vtype:
             raise Exception(f"Unable to identify self, check v_id.py for supported models, dump raidqry: {self.raidcom.views['_raidqry'][str(self.raidcom.serial)]}")
         
-        view = { 'v_id': self.raidcom.v_id, 'vtype': self.raidcom.vtype, 'model': self.raidcom.model, 'micro_ver': self.raidcom.micro_ver, 'cache': self.raidcom.cache, 'horcm_ver': self.raidcom.horcm_ver, 'serial': self.raidcom.serial, 'horcm_inst': self.raidcom.instance, 'cmd_device': self.raidcom.cmd_device, 'cmd_device_type': self.raidcom.cmd_device_type }
-        #cmdreturn = Cmdview(returncode=0,stdout=view,stderr=None)
+        # if inqraid was successful, we can also return cmd_device_ldevid
+        try:
+            if self.raidcom.cmd_device_type == "FIBRE":
+                device_file =  self.raidcom.cmd_device.split('/')[-1]
+                self.raidcom.cmd_device_ldevid = self.raidcom.views['_inqraid'][device_file]['LDEV']
+                self.raidcom.cmd_device_culdev = Ldevid(self.raidcom.cmd_device_ldevid).culdev
+                self.raidcom.cmd_device_port = self.raidcom.views['_inqraid'][device_file]['PORT']
+        except:
+            self.log.warn("Unable to derive cmd_device ldev_id")
+
+        view = {
+            'v_id': self.raidcom.v_id,
+            'vtype': self.raidcom.vtype,
+            'model': self.raidcom.model,
+            'cache': self.raidcom.cache,
+            'serial': self.raidcom.serial,
+            'micro_ver': self.raidcom.micro_ver,
+            'horcm_ver': self.raidcom.horcm_ver,
+            'horcm_inst': self.raidcom.instance,
+            'cmd_device': self.raidcom.cmd_device,
+            'cmd_device_type': self.raidcom.cmd_device_type,
+            'cmd_device_port': self.raidcom.cmd_device_port,
+            'cmd_device_ldevid': self.raidcom.cmd_device_ldevid,
+            'cmd_device_culdev': self.raidcom.cmd_device_culdev
+        }
+        
         cmdreturn = Cmdview("identify")
         cmdreturn.stdout = view
         cmdreturn.view = view
@@ -1066,10 +1093,9 @@ class Raidcomparser:
         
         def createview(data):
             for datadict in data:
-                group = datadict['GROUP']
+                #group = datadict['GROUP']
                 location = datadict['LOCATION']
-                cmdreturn.view[group] = cmdreturn.view.get(group,{'_DRIVES':{}})
-                cmdreturn.view[group]['_DRIVES'][location] = datadict
+                cmdreturn.view[location] = datadict
                 cmdreturn.stats['drivecount'] += 1 
 
         prefilter = []

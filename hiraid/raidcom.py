@@ -14,6 +14,7 @@ from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 from .hiraidexception import RaidcomException
 from .horcctl import Horcctl
+from .inqraid import Inqraid
 from hicciexceptions.cci_exceptions import *
 from hicciexceptions.cci_exceptions import cci_exceptions_table
 
@@ -22,6 +23,7 @@ __version__ = "v1.0.56"
 class Raidcom:
 
     version = __version__
+    inqraidView = {}
     
     def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging,username=None,password=None,asyncmode=False,unlockOnException=True):
 
@@ -123,11 +125,25 @@ class Raidcom:
         self.log.debug(f"Storage horcctl (unitid:cmddevice): {cmdreturn.view}")
         return cmdreturn
 
+    def inqraid(self, refresh=False, view_keyname: str='_inqraid', **kwargs) -> object:
+        try:
+            if getattr(self.inqraidView,'view',None) and not refresh:
+                cmdreturn = self.inqraidView
+            else:
+                cmdreturn = Inqraid().inqraidCli()
+                self.__class__.inqraidView = cmdreturn
+            self.updateview(self.views,{view_keyname:cmdreturn.view})
+            return cmdreturn
+        except Exception as e:
+            self.log.warn("Unable to obtain inqraid")
+
+
     def identify(self, view_keyname: str='_identity', **kwargs) -> object:
         self.concurrent_getresource()
         self.raidqry()
         self.unitid = self.getport().data[0]['UNITID']
         self.horcctl(unitid=self.unitid)
+        self.inqraid()
         cmdreturn = self.parser.identify()
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         #Horcctl
@@ -1402,7 +1418,7 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         return cmdreturn
 
-    def getdrive(self,view_keyname: str='_parity_grp', update_view=True, **kwargs) -> object:
+    def getdrive(self,view_keyname: str='_drives', update_view=True, **kwargs) -> object:
         '''
         raidcom get drive\n
         examples:\n
