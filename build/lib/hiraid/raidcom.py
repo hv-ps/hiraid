@@ -26,7 +26,7 @@ class Raidcom:
 
     version = __version__
     inqraidView = {}
-    def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging,username=None,password=None,asyncmode=False,unlockOnException=True,cachedir=f"{os.path.expanduser('~')}{os.sep}hiraidCache"):
+    def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging,username=None,password=None,asyncmode=False,unlockOnException=True,cachedir=f"{os.path.expanduser('~')}{os.sep}hiraid"):
 
         self.serial = serial
         self.log = log
@@ -60,6 +60,7 @@ class Raidcom:
         self.createdir(self.cachedir)
         file = open(self.cachefile,"w")
         file.write(json.dumps(self.views,indent=4))
+        return Cmdview(cmd="writecache")
 
     def loadcache(self):
         self.log.debug(f'Reading cachefile {self.cachefile}')
@@ -68,7 +69,8 @@ class Raidcom:
                 self.views = json.load(json_file)
         except Exception as e:
             raise Exception(f'Unable to load cachefile {self.cachefile}')
-        
+        return Cmdview(cmd="loadcache")
+    
     def updateview(self,view: dict,viewupdate: dict) -> dict:
         ''' Update dict view with new dict data '''
         for k, v in viewupdate.items():
