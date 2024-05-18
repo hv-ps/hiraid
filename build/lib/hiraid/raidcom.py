@@ -7,25 +7,26 @@
 # Author: Clive Meakin
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-import re, ast, time, json, logging, subprocess, collections, concurrent.futures
+import re, ast, time, json, logging, subprocess, collections, concurrent.futures, os
 from .raidcomparser import Raidcomparser
 from .cmdview import Cmdview,CmdviewConcurrent
 from .raidcomstats import Raidcomstats
 from .storagecapabilities import Storagecapabilities
 from .hiraidexception import RaidcomException
+from importlib.metadata import version
 from .horcctl import Horcctl
 from .inqraid import Inqraid
 from hicciexceptions.cci_exceptions import *
 from hicciexceptions.cci_exceptions import cci_exceptions_table
 
-__version__ = "v1.0.56"
+#__version__ = "v1.0.56"
+__version__ = version('hiraid')
 
 class Raidcom:
 
     version = __version__
     inqraidView = {}
-    
-    def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging,username=None,password=None,asyncmode=False,unlockOnException=True):
+    def __init__(self,serial,instance,path="/usr/bin/",cciextension='.sh',log=logging,username=None,password=None,asyncmode=False,unlockOnException=True,cachedir=f"{os.path.expanduser('~')}{os.sep}hiraidCache"):
 
         self.serial = serial
         self.log = log
@@ -45,10 +46,29 @@ class Raidcom:
         self.updatestats = Raidcomstats(self,log=self.log)
         self.asyncmode = asyncmode
         self.lock = None
+        self.cachedir = cachedir
+        self.cachefile = f"{self.cachedir}{os.sep}{self.serial}_cache.json"
         self.login()
         self.identify()
         self.limitations()
 
+    def createdir(self,directory):
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+    def writecache(self):
+        self.createdir(self.cachedir)
+        file = open(self.cachefile,"w")
+        file.write(json.dumps(self.views,indent=4))
+
+    def loadcache(self):
+        self.log.debug(f'Reading cachefile {self.cachefile}')
+        try:
+            with open(self.cachefile) as json_file:
+                self.views = json.load(json_file)
+        except Exception as e:
+            raise Exception(f'Unable to load cachefile {self.cachefile}')
+        
     def updateview(self,view: dict,viewupdate: dict) -> dict:
         ''' Update dict view with new dict data '''
         for k, v in viewupdate.items():
