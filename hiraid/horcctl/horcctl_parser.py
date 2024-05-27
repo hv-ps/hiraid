@@ -2,8 +2,9 @@ import logging
 
 class Horcctl_parser():
 
-    def __init__(self,log=logging):
+    def __init__(self,horcctl,log=logging):
         self.log = log
+        self.horcctl = horcctl
 
     def initload(self,cmdreturn,header='',keys=[]):
 
@@ -36,12 +37,12 @@ class Horcctl_parser():
     def showControlDeviceOfHorcm(self, cmdreturn: object, unitid: int):
         # Current control device = \\.\IPCMD-172.16.167.13-31001
         cmdreturn.rawdata = [row.strip() for row in list(filter(None,cmdreturn.stdout.split('\n')))]
-        cmdreturn.data = [{unitid:row.split('=')[1].strip()} for row in cmdreturn.rawdata]
+        cmdreturn.data = [{"unitid":unitid, "current_control_device": row.split('=')[1].strip(), "instance": self.horcctl.instance } for row in cmdreturn.rawdata]
         
         def createview(cmdreturn):
+            #print(cmdreturn.data)
             for datadict in cmdreturn.data:
-                for k,v in datadict.items():
-                    cmdreturn.view[unitid] = v
+                cmdreturn.view[datadict['instance']] = datadict
         
         createview(cmdreturn)
         return cmdreturn

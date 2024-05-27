@@ -16,6 +16,8 @@ from .hiraidexception import RaidcomException
 from importlib.metadata import version
 from .horcctl import Horcctl
 from .inqraid import Inqraid
+from . import timer
+from .historutils.historutils import Ldevid
 from hicciexceptions.cci_exceptions import *
 from hicciexceptions.cci_exceptions import cci_exceptions_table
 
@@ -30,7 +32,7 @@ class Raidcom:
 
         self.serial = serial
         self.log = log
-        self.instance = instance
+        self.instances = {}
         self.path = path
         self.cciextension = cciextension
         self.username = username
@@ -48,9 +50,101 @@ class Raidcom:
         self.lock = None
         self.cachedir = cachedir
         self.cachefile = f"{self.cachedir}{os.sep}{self.serial}_cache.json"
+        self.inqraid()
+        self.loadinstances(instance)
         self.login()
         self.identify()
         self.limitations()
+
+    def loadinstancesX(self,instances):
+        try:
+            iter(instances)
+        except TypeError:
+            self.instance = instances
+            self.instances[instances] = {}
+        else:
+            self.instance = instances[0]
+            self.instances = {i:{} for i in instances}
+
+        for i in self.instances:
+            instance_unitid = self.getport(instance=i).data[0]['UNITID']
+            self.horcctl(unitid=instance_unitid,instance=i)
+            cmd_device = self.views['_horcctl'][i]['current_control_device']
+            cmd_device_type = ('FIBRE','IP')['IPCMD' in cmd_device]
+            self.instances[i] = { 'cmd_device': cmd_device, 'cmd_device_type': cmd_device_type }
+            # if inqraid was successful, we can also return cmd_device_ldevid
+            try:
+                if cmd_device_type == "FIBRE":
+                    device_file =  cmd_device.split('/')[-1]
+                    self.instances[i]['cmd_device_ldevid'] = self.views['_inqraid'][device_file]['LDEV']
+                    self.instances[i]['cmd_device_culdev'] = Ldevid(self.instances[i]['cmd_device_ldevid']).culdev
+                    self.instances[i]['cmd_device_port'] = self.views['_inqraid'][device_file]['PORT']
+                else:
+                    self.log.warn(f"Instance {i} is an IPCMD, expect poor performance from this instance")
+            except:
+                self.log.warn(f"Unable to derive cmd_device ldev_id for instance {i}")
+        print(self.instance)
+    
+    def loadinstances(self,instances,max_workers=10):
+        try:
+            iter(instances)
+        except TypeError:
+            self.instance = instances
+            self.instances[instances] = {}
+        else:
+            self.instance = instances[0]
+            self.instances = {i:{} for i in instances}
+
+        # Obtain unitids concurrently by fetching ports using all instances
+        cmdreturn = CmdviewConcurrent()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_out = { executor.submit(self.getport,update_view=False,instance=instance): instance for instance in self.instances}
+            for future in concurrent.futures.as_completed(future_out):
+                self.instances[future.result().instance]['UNITID'] = future.result().data[0]['UNITID']
+                
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_out = { executor.submit(self.horcctl,instance=instance,unitid=self.instances[instance]['UNITID']): instance for instance in self.instances}
+            for future in concurrent.futures.as_completed(future_out):
+                self.update_concurrent_cmdreturn(cmdreturn,future)
+                
+        for i in self.instances:
+            '''def concurrent_getportlogins(self,ports: list=[], max_workers: int=30, view_keyname: str='_ports', **kwargs) -> object:
+
+        cmdreturn = CmdviewConcurrent()
+        for port in ports: self.checkport(port)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_out = { executor.submit(self.getportlogin,port=port,update_view=False,**kwargs): port for port in ports}
+            for future in concurrent.futures.as_completed(future_out):
+                self.update_concurrent_cmdreturn(cmdreturn,future)
+        cmdreturn.serial = self.serial
+        cmdreturn.view = dict(sorted(cmdreturn.view.items()))
+        self.updateview(self.views,{view_keyname:cmdreturn.view})
+        self.updateview(self.data,{view_keyname:cmdreturn.data})
+        self.updatestats.portlogincounters()
+        return cmdreturn'''
+            cmd_device = self.views['_horcctl'][i]['current_control_device']
+            cmd_device_type = ('FIBRE','IP')['IPCMD' in cmd_device]
+            self.instances[i] = { 'cmd_device': cmd_device, 'cmd_device_type': cmd_device_type }
+            # if inqraid was successful, we can also return cmd_device_ldevid
+            try:
+                if cmd_device_type == "FIBRE":
+                    device_file =  cmd_device.split('/')[-1]
+                    self.instances[i]['cmd_device_ldevid'] = self.views['_inqraid'][device_file]['LDEV']
+                    self.instances[i]['cmd_device_culdev'] = Ldevid(self.instances[i]['cmd_device_ldevid']).culdev
+                    self.instances[i]['cmd_device_port'] = self.views['_inqraid'][device_file]['PORT']
+                else:
+                    self.log.warn(f"Instance {i} is an IPCMD, expect poor performance from this instance")
+            except:
+                self.log.warn(f"Unable to derive cmd_device ldev_id for instance {i}")
+            self.horcm_instance_list = list(self.instances.keys())
+            self.num_horcm_instances = len(self.horcm_instance_list)
+
+    def updatetimer(self,cmdreturn):
+        elapsedtime = timer.timediff(cmdreturn.start)
+        cmdreturn.elapsedseconds = elapsedtime['elapsedseconds']
+        cmdreturn.elapsedmilliseconds = elapsedtime['elapsedmilliseconds']
+        cmdreturn.end = elapsedtime['end']
+        cmdreturn.elapsed = { 'elapsedseconds': elapsedtime['elapsedseconds'], 'elapsedmilliseconds': elapsedtime['elapsedmilliseconds'] }
 
     def createdir(self,directory):
         if not os.path.exists(directory):
@@ -142,7 +236,7 @@ class Raidcom:
         return cmdreturn
     
     def horcctl(self, unitid: int, view_keyname: str='_horcctl', **kwargs) -> object:
-        cmdreturn = Horcctl(self.instance).showControlDeviceOfHorcm(unitid)
+        cmdreturn = Horcctl(kwargs.get('instance',self.instance)).showControlDeviceOfHorcm(unitid)
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.log.debug(f"Storage horcctl (unitid:cmddevice): {cmdreturn.view}")
         return cmdreturn
@@ -163,9 +257,9 @@ class Raidcom:
     def identify(self, view_keyname: str='_identity', **kwargs) -> object:
         self.concurrent_getresource()
         self.raidqry()
-        self.unitid = self.getport().data[0]['UNITID']
-        self.horcctl(unitid=self.unitid)
-        self.inqraid()
+        #self.unitid = self.getport().data[0]['UNITID']
+        #self.horcctl(unitid=self.unitid)
+        #self.inqraid()
         cmdreturn = self.parser.identify()
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         #Horcctl
@@ -255,7 +349,7 @@ class Raidcom:
         getldev(ldev_id=1000-11000,datafilter={'LDEV_NAMING':'Test_Label_1'})
         getldev(ldev_id=1000-11000,datafilter={'Anykey_when_val_is_callable':lambda a : float(a.get('Used_Block(GB)',0)) > 10})
         '''
-        cmd = f"{self.path}raidcom get ldev -ldev_id {ldev_id} -I{self.instance} -s {self.serial}"
+        cmd = f"{self.path}raidcom get ldev -ldev_id {ldev_id} -I{kwargs.get('instance',self.instance)} -s {self.serial}"
         cmdreturn = self.execute(cmd)
         self.parser.getldev(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         if update_view:
@@ -308,7 +402,7 @@ class Raidcom:
         ports.stdout\n
         ports.stats\n
         '''
-        cmd = f"{self.path}raidcom get port -I{self.instance} -s {self.serial}"
+        cmd = f"{self.path}raidcom get port -I{kwargs.get('instance',self.instance)} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         #self.parser.getport(cmdreturn,datafilter=kwargs.get('datafilter',{}),**kwargs)
         self.parser.getport(cmdreturn,**kwargs)
@@ -320,7 +414,7 @@ class Raidcom:
         #self.portcounters()
         #raidcomstats.portcounters(self)
         #self.raidcomstats.portcounters()
-        
+        cmdreturn.instance = kwargs.get('instance',self.instance)
         return cmdreturn
 
     def XXXgethostgrp(self,port: str, view_keyname: str='_ports', update_view: bool=True, **kwargs) -> object:
@@ -419,8 +513,8 @@ class Raidcom:
             kwargs['datafilter'] = { 'GROUP_NAME': host_grp_name }
 
         resource_param = ("",f" -resource {kwargs.get('resource')} ")[kwargs.get('resource') is not None]
-            
-        cmd = f"{self.path}raidcom get host_grp -port {port} -key detail {resource_param} -I{self.instance} -s {self.serial}"
+        
+        cmd = f"{self.path}raidcom get host_grp -port {port} -key detail {resource_param} -I{kwargs.get('instance',self.instance)} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         self.parser.gethostgrp_key_detail(cmdreturn,datafilter=kwargs.get('datafilter',{}),hostgrp_usage=kwargs.get('hostgrp_usage',['_GIDS','_GIDS_UNUSED']))
 
@@ -451,7 +545,7 @@ class Raidcom:
         luns.stdout\n
         '''
         cmdparam = self.cmdparam(port=port,**kwargs)
-        cmd = f"{self.path}raidcom get lun -port {port}{cmdparam} -I{self.instance} -s {self.serial} -key opt"
+        cmd = f"{self.path}raidcom get lun -port {port}{cmdparam} -I{kwargs.get('instance',self.instance)} -s {self.serial} -key opt"
         cmdreturn = self.execute(cmd,**kwargs)
         self.parser.getlun(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         if update_view:
@@ -487,7 +581,7 @@ class Raidcom:
         '''
 
         cmdparam = self.cmdparam(port=port,**kwargs)
-        cmd = f"{self.path}raidcom get hba_wwn -port {port}{cmdparam} -I{self.instance} -s {self.serial}"
+        cmd = f"{self.path}raidcom get hba_wwn -port {port}{cmdparam} -I{kwargs.get('instance',self.instance)} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         self.parser.gethbawwn(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         if update_view:
@@ -502,7 +596,7 @@ class Raidcom:
         Creates view: self.views['_ports'][port]['PORT_LOGINS'][logged_in_wwn_list].\n
         View is refreshed each time the function is called.\n
         '''
-        cmd = f"{self.path}raidcom get port -port {port} -I{self.instance} -s {self.serial}"
+        cmd = f"{self.path}raidcom get port -port {port} -I{kwargs.get('instance',self.instance)} -s {self.serial}"
         cmdreturn = self.execute(cmd,**kwargs)
         self.parser.getportlogin(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         
@@ -1389,7 +1483,7 @@ class Raidcom:
             if gid is None: raise Exception("raidscan requires gid if port is not fully qualified but it is set to none")
             cmdarg = "-"+str(gid)
         
-        cmd = f"{self.path}raidscan -p {port}{cmdarg} -I{mode}{self.instance} -s {self.serial} -CLI"
+        cmd = f"{self.path}raidscan -p {port}{cmdarg} -I{mode}{kwargs.get('instance',self.instance)} -s {self.serial} -CLI"
         cmdreturn = self.execute(cmd,**kwargs)
         self.parser.raidscanremote(cmdreturn,datafilter=kwargs.get('datafilter',{}))
         self.updateview(self.views,{view_keyname:cmdreturn.view})
@@ -1469,6 +1563,11 @@ class Raidcom:
     '''
     concurrent_{functions}
     '''
+    def concurrent_zip(self,iterable):
+        concurrent_instances = self.horcm_instance_list.copy()
+        while len(concurrent_instances) < len(iterable):
+            concurrent_instances.extend(self.horcm_instance_list.copy())
+        return dict(zip(iterable, concurrent_instances))
 
     def update_concurrent_cmdreturn(self,cmdreturn,future):
         cmdreturn.stdout.append(future.result().stdout)
@@ -1489,8 +1588,13 @@ class Raidcom:
         '''
         cmdreturn = CmdviewConcurrent()
         for port in ports: self.checkport(port)
+        # With more horcm instances, we should be able to obtain our data more quickly.
+        # To round robin available horcm instances, the instance list must be greater than 
+        port_instances = self.concurrent_zip(ports)
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.gethostgrp_key_detail,port=port,update_view=False,**kwargs): port for port in ports}
+            #future_out = { executor.submit(self.gethostgrp_key_detail,port=port,update_view=False,**kwargs): port for port in ports}
+            future_out = { executor.submit(self.gethostgrp_key_detail,port=port,instance=port_instances[port],update_view=False,**kwargs): port for port in port_instances}
             for future in concurrent.futures.as_completed(future_out):
                 self.update_concurrent_cmdreturn(cmdreturn,future)
                 
@@ -1499,7 +1603,7 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.hostgroupcounters()
-
+        self.updatetimer(cmdreturn)
         return cmdreturn
 
     def concurrent_gethbawwns(self,portgids: list=[], max_workers: int=30, view_keyname: str='_ports', **kwargs) -> object:
@@ -1507,10 +1611,11 @@ class Raidcom:
         ports=['cl1-a-3','cl1-a-4'] \n
         '''
         cmdreturn = CmdviewConcurrent()
+        portgids_instances = self.concurrent_zip(portgids)
         
         for portgid in portgids: self.checkportgid(portgid)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.gethbawwn,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
+            future_out = { executor.submit(self.gethbawwn,port=portgid,instance=portgids_instances[portgid],update_view=False,**kwargs): portgid for portgid in portgids_instances}
             for future in concurrent.futures.as_completed(future_out):
                 self.update_concurrent_cmdreturn(cmdreturn,future)
         cmdreturn.serial = self.serial
@@ -1518,6 +1623,7 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.hbawwncounters()
+        self.updatetimer(cmdreturn)
         return cmdreturn
 
     def concurrent_getluns(self,portgids: list=[], max_workers: int=30, view_keyname: str='_ports', **kwargs) -> object:
@@ -1525,10 +1631,10 @@ class Raidcom:
         ports=['cl1-a-3','cl1-a-4'] \n
         '''
         cmdreturn = CmdviewConcurrent()
-        
         for portgid in portgids: self.checkportgid(portgid)
+        portgids_instances = self.concurrent_zip(portgids)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getlun,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
+            future_out = { executor.submit(self.getlun,port=portgid,instance=portgids_instances[portgid],update_view=False,**kwargs): portgid for portgid in portgids_instances}
             for future in concurrent.futures.as_completed(future_out):
                 self.update_concurrent_cmdreturn(cmdreturn,future)
         cmdreturn.serial = self.serial
@@ -1536,6 +1642,7 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.luncounters()
+        self.updatetimer(cmdreturn)
         return cmdreturn
 
     def concurrent_getldevs(self,ldev_ids: list=[], max_workers: int=30, view_keyname: str='_ldevs', **kwargs) -> object:
@@ -1543,8 +1650,9 @@ class Raidcom:
         ldev_ids = [1234,1235,1236]\n
         '''
         cmdreturn = CmdviewConcurrent()
+        ldevids_instances = self.concurrent_zip(ldev_ids)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getldev,ldev_id=ldev_id,update_view=False,**kwargs): ldev_id for ldev_id in ldev_ids}
+            future_out = { executor.submit(self.getldev,ldev_id=ldev_id,instance=ldevids_instances[ldev_id],update_view=False,**kwargs): ldev_id for ldev_id in ldevids_instances}
             for future in concurrent.futures.as_completed(future_out):
                 self.update_concurrent_cmdreturn(cmdreturn,future)
         cmdreturn.serial = self.serial
@@ -1552,6 +1660,7 @@ class Raidcom:
         
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updatestats.ldevcounts()
+        self.updatetimer(cmdreturn)
         return cmdreturn
 
     def concurrent_getportlogins(self,ports: list=[], max_workers: int=30, view_keyname: str='_ports', **kwargs) -> object:
@@ -1560,8 +1669,9 @@ class Raidcom:
         '''
         cmdreturn = CmdviewConcurrent()
         for port in ports: self.checkport(port)
+        port_instances = self.concurrent_zip(ports)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getportlogin,port=port,update_view=False,**kwargs): port for port in ports}
+            future_out = { executor.submit(self.getportlogin,port=port,instance=port_instances[port],update_view=False,**kwargs): port for port in port_instances}
             for future in concurrent.futures.as_completed(future_out):
                 self.update_concurrent_cmdreturn(cmdreturn,future)
         cmdreturn.serial = self.serial
@@ -1569,6 +1679,7 @@ class Raidcom:
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updateview(self.data,{view_keyname:cmdreturn.data})
         self.updatestats.portlogincounters()
+        self.updatetimer(cmdreturn)
         return cmdreturn
 
 
@@ -1580,8 +1691,9 @@ class Raidcom:
         #def raidscanremote(self,port: str, gid=None, mode='TC', view_keyname='_remotereplication', **kwargs) -> object:
         cmdreturn = CmdviewConcurrent()
         for portgid in portgids: self.checkportgid(portgid)
+        portgid_instances = self.concurrent_zip(portgids)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.raidscanremote,port=portgid,update_view=False,**kwargs): portgid for portgid in portgids}
+            future_out = { executor.submit(self.raidscanremote,port=portgid,instance=portgid_instances[portgid],update_view=False,**kwargs): portgid for portgid in portgid_instances}
             for future in concurrent.futures.as_completed(future_out):
                 self.update_concurrent_cmdreturn(cmdreturn,future)
         cmdreturn.serial = self.serial
@@ -1589,6 +1701,7 @@ class Raidcom:
         
         self.updateview(self.views,{view_keyname:cmdreturn.view})
         self.updatestats.ldevcounts()
+        self.updatetimer(cmdreturn)
         return cmdreturn
 
     def concurrent_addluns(self,lun_data: list=[{}], max_workers=20) -> object:

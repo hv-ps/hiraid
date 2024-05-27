@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: hiraid
-Version: 1.0.58
+Version: 1.0.60
 Summary: Hitachi raidcom wrapper
 Home-page: https://github.com/hv-ps/hiraid
 Author: Darren Chambers

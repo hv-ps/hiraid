@@ -8,7 +8,7 @@ class Horcctl():
         self.instance = instance
         self.path = path
         self.log = log
-        self.parser = Horcctl_parser(log=self.log)
+        self.parser = Horcctl_parser(self,log=self.log)
         self.raise_err = raise_err
 
     def showControlDeviceOfHorcm(self, unitid: int, acceptable_returns:list=[0], **kwargs) -> object:

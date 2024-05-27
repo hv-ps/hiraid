@@ -56,3 +56,4 @@ hiraid/horcm/horcm_cci.py
 hiraid/horcm/horcm_template.py
 hiraid/inqraid/__init__.py
 hiraid/inqraid/inqraid_parser.py
+hiraid/timer/__init__.py

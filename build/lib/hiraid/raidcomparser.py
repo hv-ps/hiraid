@@ -107,7 +107,8 @@ class Raidcomparser:
         self.raidcom.micro_ver = micro_ver
         self.raidcom.cache = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['Cache(MB)']
         self.raidcom.horcm_ver = self.raidcom.views['_raidqry'][str(self.raidcom.serial)]['HORCM_ver']
-        self.raidcom.cmd_device = self.raidcom.views['_horcctl'][self.raidcom.unitid]
+        #self.raidcom.cmd_device = self.raidcom.views['_horcctl'][self.raidcom.unitid]
+        self.raidcom.cmd_device = self.raidcom.views['_horcctl'][self.raidcom.instance]['current_control_device']
         self.raidcom.cmd_device_type = ('FIBRE','IP')['IPCMD' in self.raidcom.cmd_device]
         self.raidcom.cmd_device_ldevid = None
         self.raidcom.cmd_device_culdev = None

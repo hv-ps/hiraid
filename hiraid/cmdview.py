@@ -1,4 +1,5 @@
 
+from . import timer
 
 class Cmdview():
     def __init__(self,cmd):
@@ -15,6 +16,7 @@ class Cmdview():
         self.undodefs = []
         self.stats = {}
         self.actions = {}
+        self.start = timer.now()
 
 class CmdviewConcurrent():
     def __init__(self,returncodes=[],stdout=[],stderr=[]):
@@ -28,4 +30,5 @@ class CmdviewConcurrent():
         self.undocmds = []
         self.undodefs = []
         self.stats = {}
+        self.start = timer.now()
 
