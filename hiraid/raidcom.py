@@ -55,45 +55,14 @@ class Raidcom:
         self.login()
         self.identify()
         self.limitations()
-
-    def loadinstancesX(self,instances):
-        try:
-            iter(instances)
-        except TypeError:
-            self.instance = instances
-            self.instances[instances] = {}
-        else:
-            self.instance = instances[0]
-            self.instances = {i:{} for i in instances}
-
-        for i in self.instances:
-            instance_unitid = self.getport(instance=i).data[0]['UNITID']
-            self.horcctl(unitid=instance_unitid,instance=i)
-            cmd_device = self.views['_horcctl'][i]['current_control_device']
-            cmd_device_type = ('FIBRE','IP')['IPCMD' in cmd_device]
-            self.instances[i] = { 'cmd_device': cmd_device, 'cmd_device_type': cmd_device_type }
-            # if inqraid was successful, we can also return cmd_device_ldevid
-            try:
-                if cmd_device_type == "FIBRE":
-                    device_file =  cmd_device.split('/')[-1]
-                    self.instances[i]['cmd_device_ldevid'] = self.views['_inqraid'][device_file]['LDEV']
-                    self.instances[i]['cmd_device_culdev'] = Ldevid(self.instances[i]['cmd_device_ldevid']).culdev
-                    self.instances[i]['cmd_device_port'] = self.views['_inqraid'][device_file]['PORT']
-                else:
-                    self.log.warn(f"Instance {i} is an IPCMD, expect poor performance from this instance")
-            except:
-                self.log.warn(f"Unable to derive cmd_device ldev_id for instance {i}")
-        print(self.instance)
     
     def loadinstances(self,instances,max_workers=10):
-        try:
-            iter(instances)
-        except TypeError:
-            self.instance = instances
-            self.instances[instances] = {}
-        else:
+        if isinstance(instances, tuple) or isinstance(instances, list):
             self.instance = instances[0]
             self.instances = {i:{} for i in instances}
+        else:
+            self.instance = instances
+            self.instances[instances] = {}            
 
         # Obtain unitids concurrently by fetching ports using all instances
         cmdreturn = CmdviewConcurrent()
@@ -108,20 +77,6 @@ class Raidcom:
                 self.update_concurrent_cmdreturn(cmdreturn,future)
                 
         for i in self.instances:
-            '''def concurrent_getportlogins(self,ports: list=[], max_workers: int=30, view_keyname: str='_ports', **kwargs) -> object:
-
-        cmdreturn = CmdviewConcurrent()
-        for port in ports: self.checkport(port)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_out = { executor.submit(self.getportlogin,port=port,update_view=False,**kwargs): port for port in ports}
-            for future in concurrent.futures.as_completed(future_out):
-                self.update_concurrent_cmdreturn(cmdreturn,future)
-        cmdreturn.serial = self.serial
-        cmdreturn.view = dict(sorted(cmdreturn.view.items()))
-        self.updateview(self.views,{view_keyname:cmdreturn.view})
-        self.updateview(self.data,{view_keyname:cmdreturn.data})
-        self.updatestats.portlogincounters()
-        return cmdreturn'''
             cmd_device = self.views['_horcctl'][i]['current_control_device']
             cmd_device_type = ('FIBRE','IP')['IPCMD' in cmd_device]
             self.instances[i] = { 'cmd_device': cmd_device, 'cmd_device_type': cmd_device_type }
